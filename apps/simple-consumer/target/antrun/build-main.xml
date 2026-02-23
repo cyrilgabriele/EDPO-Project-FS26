@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project name="maven-antrun-" default="main">
-  <target name="main">
-    <echo file="/Users/cyrilgabriele/Documents/School/00_Courses/04_EDPO/03_Code/EDPO-Project-HS26/apps/simple-consumer/target/consumer">#!/usr/bin/env bash
-DIR="$(cd "$(dirname "$0")" &amp;&amp; pwd)"
-exec java -jar "$DIR/pubsub-consumer-1.0-SNAPSHOT-jar-with-dependencies.jar" "$@"</echo>
-    <chmod file="/Users/cyrilgabriele/Documents/School/00_Courses/04_EDPO/03_Code/EDPO-Project-HS26/apps/simple-consumer/target/consumer" perm="755" />
-  </target>
-</project>
