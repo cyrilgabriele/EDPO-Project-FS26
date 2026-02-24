@@ -11,13 +11,13 @@ You can find the full description of the setup in the original repository.
 
 ## Infrastructure
 
-The infrastructure consists of three Docker services defined in [docker/docker-compose.yml](docker/docker-compose.yml):
+The infrastructure consists of three Docker services defined in [docker-compose.yml](docker-compose.yml):
 
 1. **controller**: A dedicated node responsible for cluster metadata and leadership election.
 1. **kafka1**: Broker node.
 1. **kafka2**: Another broker node.
 
-The configuration of the **Controller** and **Brokers** are the same as in the original lab.
+The configurations of the **Controller** and **Brokers** are the same as in the original lab.
 
 ## Components
 
@@ -27,7 +27,7 @@ The configuration of the **Controller** and **Brokers** are the same as in the o
    - `acks=0`: The leader won't wait for the broker's acknowledgement.
 
 1. **ClickStream-Consumer**
-- The consumer consumes the messages from the topic.
+   - The consumer consumes the messages from the topic.
 
 ## Tutorial: Message Loss
 

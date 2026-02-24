@@ -6,18 +6,16 @@ import com.google.common.io.Resources;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.json.simple.parser.ParseException;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Properties;
 
-import static org.testng.Assert.assertEquals;
-
 public class ClicksConsumer {
-    public static void main(String[] args) throws IOException, ParseException {
+    public static void main(String[] args) throws IOException {
 
         // Read Kafka properties file and create Kafka consumer with the given properties
         KafkaConsumer<String, Object> consumer;
@@ -30,6 +28,7 @@ public class ClicksConsumer {
         // subscribe to relevant topics
         consumer.subscribe(Arrays.asList("click-events"));
 
+        Integer previousEventId = null;
 
         while (true) {
 
@@ -38,20 +37,40 @@ public class ClicksConsumer {
 
             // process consumer records depending on record.topic() and record.value()
             for (ConsumerRecord<String, Object> record : records) {
-                // switch/case
-                switch (record.topic()) {
-                    case "click-events":
-                        System.out.println("Received click-events - value: " + record.value()+ "- partition: "+record.partition());
-
-                        break;
-
-                    default:
-                        throw new IllegalStateException("Shouldn't be possible to get message on topic " + record.topic());
+                if ("click-events".equals(record.topic())) {
+                    Integer currentEventId = extractEventId(record.value());
+                    if (currentEventId != null && previousEventId != null && currentEventId > previousEventId + 1) {
+                        System.out.println("GAP DETECTED from=" + (previousEventId + 1) + " to="
+                                + (currentEventId - 1) + " previous=" + previousEventId
+                                + " current=" + currentEventId);
+                    }
+                    if (currentEventId != null) {
+                        previousEventId = currentEventId;
+                    }
+                    System.out.println("RECEIVED eventID=" + currentEventId
+                            + " partition=" + record.partition()
+                            + " offset=" + record.offset()
+                            + " value=" + record.value());
+                } else {
+                    throw new IllegalStateException("Shouldn't be possible to get message on topic " + record.topic());
                 }
             }
 
+            if (!records.isEmpty()) {
+                consumer.commitSync();
+            }
 
         }
+    }
+
+    private static Integer extractEventId(Object value) {
+        if (value instanceof Map<?, ?> valueMap) {
+            Object eventId = valueMap.get("eventID");
+            if (eventId instanceof Number numberValue) {
+                return numberValue.intValue();
+            }
+        }
+        return null;
     }
 
 }
