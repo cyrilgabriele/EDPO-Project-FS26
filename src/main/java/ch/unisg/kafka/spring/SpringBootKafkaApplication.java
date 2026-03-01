@@ -1,12 +1,12 @@
-package ch.unisg.kafka.spring;
+package main.java.ch.unisg.kafka.spring;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class FinanceBro {
+public class SpringBootKafkaApplication {
 
 	public static void main(String[] args) {
-        SpringApplication.run(FinanceBro.class, args);
+		SpringApplication.run(SpringBootKafkaApplication.class, args);
 	}
 }

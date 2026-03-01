@@ -1,4 +1,4 @@
-package ch.unisg.kafka.spring.config;
+package main.java.ch.unisg.kafka.spring.config;
 
 import ch.unisg.kafka.spring.model.SuperHero;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -37,7 +37,7 @@ public class KafkaConsumerConfig {
     // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     @Bean
     public ConsumerFactory<String, SuperHero> consumerFactory() {
-        Map<String, Object> config = new HashMap<>();
+       Map<String, Object> config = new HashMap<>();
 
         config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         config.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);

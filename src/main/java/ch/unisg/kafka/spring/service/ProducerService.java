@@ -1,4 +1,4 @@
-package ch.unisg.kafka.spring.service;
+package main.java.ch.unisg.kafka.spring.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
