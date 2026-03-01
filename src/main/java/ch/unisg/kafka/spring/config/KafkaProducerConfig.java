@@ -1,5 +1,6 @@
 package ch.unisg.kafka.spring.config;
 
+import ch.unisg.kafka.spring.model.MarketRollingWindowEvent;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,6 +41,11 @@ public class KafkaProducerConfig {
     @Primary
     @Bean
     public <T> KafkaTemplate<String, T> kafkaTemplate() {
+        return new KafkaTemplate<>(producerFactory());
+    }
+
+    @Bean
+    public KafkaTemplate<String, MarketRollingWindowEvent> marketRollingKafkaTemplate() {
         return new KafkaTemplate<>(producerFactory());
     }
 

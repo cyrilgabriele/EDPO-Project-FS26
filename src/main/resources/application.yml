@@ -12,3 +12,11 @@ spring:
 
     topic: message-topic
     superhero-topic: superhero-topic
+
+app:
+  kafka:
+    market-rolling-topic: market.rolling.1h
+  binance:
+    ws-base-url: wss://stream.binance.com:9443/ws
+    stream-name: '!ticker_1h@arr'
+    reconnect-delay: 5s
