@@ -1,0 +1,14 @@
+server:
+  port: 8080  # Tomcat default port
+
+spring:
+  kafka:
+    consumer:
+      bootstrap-servers: localhost:9092
+      group-id: group_id
+      auto-offset-reset: earliest
+    producer:
+      bootstrap-servers: localhost:9092
+
+    topic: message-topic
+    superhero-topic: superhero-topic
