@@ -1,4 +1,4 @@
-package ch.unisg.kafka.spring.controllers;
+package main.java.ch.unisg.kafka.spring.controllers;
 
 import ch.unisg.kafka.spring.model.SuperHero;
 import ch.unisg.kafka.spring.service.ProducerService;

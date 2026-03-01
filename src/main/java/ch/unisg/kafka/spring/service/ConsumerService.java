@@ -1,4 +1,4 @@
-package ch.unisg.kafka.spring.service;
+package main.java.ch.unisg.kafka.spring.service;
 
 import ch.unisg.kafka.spring.model.SuperHero;
 import org.slf4j.Logger;

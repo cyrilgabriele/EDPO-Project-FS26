@@ -1,4 +1,4 @@
-package ch.unisg.kafka.spring.config;
+package main.java.ch.unisg.kafka.spring.config;
 
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
