@@ -1,0 +1,133 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# CryptoFlow – Local Development Stack
+#
+# Run from the `docker/` directory:
+#   docker compose up -d
+#
+# Stops + removes containers (keep volumes):
+#   docker compose down
+#
+# Stops + removes containers AND volumes (full reset):
+#   docker compose down -v
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Kafka Broker (KRaft mode – no Zookeeper) ────────────────────────────────
+  #
+  # KRaft replaces Zookeeper with a built-in Raft consensus layer.
+  # Deprecated since Kafka 3.5, removed in Kafka 4.0.
+  #
+  # Listener layout:
+  #   PLAINTEXT        kafka:29092   – internal Docker network (service-to-service)
+  #   PLAINTEXT_HOST   0.0.0.0:9092 – exposed to the host as localhost:9092
+  #   CONTROLLER       kafka:9093   – internal KRaft controller quorum
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka
+    ports:
+      - "9092:9092"   # accessible from the host at localhost:9092
+    environment:
+      # KRaft: this node is both broker and controller
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Listeners
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://kafka:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Single-node cluster settings
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # Fixed cluster ID – must be a 22-char base64-encoded UUID
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ── Kafka UI (monitoring dashboard) ─────────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"   # http://localhost:8080
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
+  # ── PostgreSQL (portfolio state) ────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: cryptoflow
+      POSTGRES_USER: cryptoflow
+      POSTGRES_PASSWORD: cryptoflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cryptoflow -d cryptoflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  # ── pgAdmin (PostgreSQL GUI) ─────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5050:80"   # http://localhost:5050
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@cryptoflow.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+
+  # ── Market Data Service ─────────────────────────────────────────────────────
+  market-data-service:
+    build:
+      context: ..
+      dockerfile: market-data-service/Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      BINANCE_POLL_INTERVAL_MS: "10000"
+
+  # ── Portfolio Service ────────────────────────────────────────────────────────
+  portfolio-service:
+    build:
+      context: ..
+      dockerfile: portfolio-service/Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cryptoflow
+      SPRING_DATASOURCE_USERNAME: cryptoflow
+      SPRING_DATASOURCE_PASSWORD: cryptoflow
+
+volumes:
+  postgres-data:
+  pgadmin-data:

@@ -1,0 +1,38 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: market-data-service
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+
+# Binance REST API configuration
+binance:
+  base-url: ${BINANCE_BASE_URL:https://api.binance.com}
+  # Comma-separated list of trading pairs to poll
+  symbols: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT
+  # Polling interval in milliseconds (default: 10 s)
+  poll-interval-ms: ${BINANCE_POLL_INTERVAL_MS:10000}
+
+# Kafka topic names
+crypto:
+  kafka:
+    topic:
+      price-raw: crypto.price.raw
+      price-raw-dlt: crypto.price.raw.DLT
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
