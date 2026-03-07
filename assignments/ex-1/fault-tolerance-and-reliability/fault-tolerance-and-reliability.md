@@ -38,9 +38,13 @@ Important characteristics of this infrastructure:
    - Logs send outcome explicitly:
      - `ACKED id=<n> ...` means the record was acknowledged.
      - `SEND FAILED id=<n> ...` means the send did not complete successfully.
+   - The producer generates a random click event every `150ms`.
+   - `retries=5`: If the leader is not available, the producer will resend the message 5 times.
+   - `acks=all`: The leader waits for the acknowledgement of all brokers.
 
 1. **ClickStream-Consumer**
    - Consumes `click-events`.
+   - `auto.offset.reset=earliest`: Reads from the beginning of the topic partition.
    - Uses `enable.auto.commit=false` and commits after processing.
    - Detects monotonic-ID gaps and logs `GAP DETECTED from=<a> to=<b> ...`.
 
@@ -139,66 +143,67 @@ Observed in this run:
 
 Goal: demonstrate that leader-only ACK can lose records on crash.
 
-1. In producer config, set:
+> [!IMPORTANT]
+>
+> **Why gaps are invisible without deliberate replication lag.**
+> On a localhost Docker network, broker-to-broker replication completes in under 1 ms.
+> By the time you manually run `docker compose kill`, every message is already on all followers —
+> so the new leader has the full log and the consumer sees no gaps.
+>
+> To open a reliable loss window, `docker-compose.yml` sets
+> `replica.fetch.wait.max.ms=3000` and `replica.fetch.min.bytes=1048576` on every broker.
+> Followers now batch their fetch requests and wait up to **3 seconds** before pulling from the leader.
+> Because each click event is tiny (~100 bytes), the 1 MB threshold is never reached,
+> so the full 3-second wait always applies.
+> This gives a ~3-second window per cycle where ACKed messages exist only on the leader.
+
+1. In producer config (`producer.properties`), set:
    - `acks=1`
    - `retries=0`
 1. Restart producer.
 1. Keep consumer running.
-1. Kill the current leader while load is running:
-   - `docker compose kill -s KILL kafkaX`
+1. Watch `ACKED id=<n>` lines scroll by in the producer log.
+1. Kill the current leader while load is running (within ~3 s of the last ACK batch):
+   ```bash
+   docker compose kill -s KILL kafkaX
+   ```
 1. Let cluster recover and continue consuming.
 
 ### Observations
 
 Expected to observe:
 
-1. Some IDs near failure are producer-`ACKED`.
-1. Consumer shows ID gaps for part of that range.
+1. Some IDs near the failure are producer-`ACKED` (leader confirmed receipt).
+   ```text
+   ACKED id=69 partition=0 offset=69
+   CLICK_EVENT_QUEUED id=70 at=2026-03-07 21:15:33.462 payload=eventID: 70, timestamp: 1772914533462, xPosition: 119, yPosition: 1035, clickedElement: EL13,
+   ACKED id=70 partition=0 offset=70
+   CLICK_EVENT_QUEUED id=71 at=2026-03-07 21:15:33.626 payload=eventID: 71, timestamp: 1772914533626, xPosition: 843, yPosition: 1023, clickedElement: EL5,
+   ACKED id=71 partition=0 offset=71
+   CLICK_EVENT_QUEUED id=72 at=2026-03-07 21:15:33.796 payload=eventID: 72, timestamp: 1772914533796, xPosition: 748, yPosition: 135, clickedElement: EL5,
+   CLICK_EVENT_QUEUED id=73 at=2026-03-07 21:15:33.949 payload=eventID: 73, timestamp: 1772914533949, xPosition: 179, yPosition: 839, clickedElement: EL8,
+   ```
+1. Consumer log shows `GAP DETECTED from=<a> to=<b>` for part of that range. This record exists only on the now-dead leader.
+   ```text
+   RECEIVED eventID=69 partition=0 offset=69 value={eventID=69, timestamp=1772914533304, xPosition=1645, yPosition=245, clickedElement=EL16}
+   RECEIVED eventID=70 partition=0 offset=70 value={eventID=70, timestamp=1772914533462, xPosition=119, yPosition=1035, clickedElement=EL13}
+   GAP DETECTED from=71 to=71 previous=70 current=72
+   RECEIVED eventID=72 partition=0 offset=71 value={eventID=72, timestamp=1772914533796, xPosition=748, yPosition=135, clickedElement=EL5}
+   RECEIVED eventID=73 partition=0 offset=72 value={eventID=73, timestamp=1772914533949, xPosition=179, yPosition=839, clickedElement=EL8}
+   RECEIVED eventID=74 partition=0 offset=73 value={eventID=74, timestamp=1772914534105, xPosition=1276, yPosition=334, clickedElement=EL14}
+   ```
 
 ### What happened?
 
-- With `acks=1`, ACK means "leader appended" only.
-- If the leader crashes before replication to followers, records can be lost.
+- With `acks=1`, ACK means "leader appended to its local log" only.
+- The replication lag caused the followers to fall behind and miss the ACKed messages.
+- Killing the leader inside that window destroys unacknowledged-to-followers messages.
 
 ### How to fix this?
 
 - Use `acks=all`.
 - Use retries (`retries > 0`) to improve resilience during transient failures.
 - Prefer `enable.idempotence=true` to avoid duplicates when retries happen.
-
-## 3. Tutorial: Anti-Pattern (`acks=all` + `min.insync.replicas=1`)
-
-Goal: show that `acks=all` alone is not enough if ISR shrinks to 1.
-
-1. Producer config:
-   - `acks=all`
-   - `retries=5`
-1. Topic config:
-   - `docker compose exec kafka1 bash -lc 'kafka-configs --bootstrap-server kafka1:29092 --entity-type topics --entity-name click-events --alter --add-config min.insync.replicas=1'`
-1. Stop two brokers:
-   - `docker compose stop kafka2 kafka3`
-1. Keep producing for 10-30 seconds (observe continuing `ACKED` lines).
-1. Hard-kill remaining broker:
-   - `docker compose kill -s KILL kafka1`
-1. Start all brokers again:
-   - `docker compose start kafka1 kafka2 kafka3`
-
-### Observations
-
-Expected to observe:
-
-1. Records continue to be ACKed while only one ISR remains.
-1. After killing the last broker, some of those ACKed records can disappear.
-
-### What happened?
-
-- `acks=all` means "all current ISR", not "all replicas in RF".
-- If ISR has shrunk to 1, `acks=all` degenerates to single-node durability.
-
-### How to fix this ?
-
-- Enforce `min.insync.replicas=2` (or higher as needed).
-- Keep `unclean.leader.election.enable=false` for durability-focused setups.
 
 ## Cleanup
 

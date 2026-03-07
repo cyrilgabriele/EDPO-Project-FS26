@@ -21,9 +21,22 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller:9093
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      # RF=1 keeps consumer group coordination (the __consumer_offsets topic) healthy
+      # even when 2 of 3 brokers are down. The experiment targets click-events (RF=3),
+      # not the internal offsets topic.
+      # RF=1 keeps consumer group coordination (the __consumer_offsets topic) healthy
+      # even when 2 of 3 brokers are down. The experiment targets click-events (RF=3),
+      # not the internal offsets topic.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_DEFAULT_REPLICATION_FACTOR: 3
-    
+      # Tutorial 2: slow down replication so the acks=1 loss window is manually triggerable.
+      # Followers wait up to 3 s per fetch cycle; small click events never reach
+      # the 1 MB threshold, so the full wait always applies.
+      KAFKA_REPLICA_FETCH_WAIT_MAX_MS: 3000
+      KAFKA_REPLICA_FETCH_MIN_BYTES: 1048576
+      # Tutorial 3: explicit ISR eviction timeout (Kafka default is 30000 ms).
+      # A hard-killed follower stays in ISR — and blocks acks=all — for this long.
+
     depends_on:
       - controller
 
@@ -40,8 +53,10 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller:9093
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_REPLICA_FETCH_WAIT_MAX_MS: 3000
+      KAFKA_REPLICA_FETCH_MIN_BYTES: 1048576
 
   kafka3:
     image: confluentinc/cp-kafka:latest
@@ -56,8 +71,10 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller:9093
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_REPLICA_FETCH_WAIT_MAX_MS: 3000
+      KAFKA_REPLICA_FETCH_MIN_BYTES: 1048576
 
     depends_on:
       - controller
