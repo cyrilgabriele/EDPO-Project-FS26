@@ -28,12 +28,12 @@ graph TB
 
 ## Upstream / Downstream Summary
 
-| Upstream | Downstream | Relationship | Integration Pattern |
-|----------|------------|-------------|---------------------|
-| Binance REST API | Market Data Context | **Conformist** | REST polling, we adapt to their schema |
-| Market Data Context | Portfolio Management Context | **Published Language** | `shared-events` module, Kafka topic `crypto.price.raw` |
-| Market Data Context | Trading Context | **Published Language** | Kafka topic `crypto.price.raw` |
-| Market Data Context | Notification Context | **Published Language** | Kafka topic `crypto.price.raw` |
-| Portfolio Management Context | Notification Context | **Published Language** | Kafka topic (portfolio value events) |
-| Trading Context | Portfolio Management Context | **Published Language** | Kafka topic `portfolio.transactions` |
-| User & Identity Context | Portfolio / Trading | **Shared Kernel** | `userId` propagated in event payloads |
+| Upstream | Downstream | Integration Pattern |
+|----------|------------|---------------------|
+| Binance REST API | Market Data Context | REST polling, we adapt to their schema |
+| Market Data Context | Portfolio Management Context | `shared-events` module, Kafka topic `crypto.price.raw` |
+| Market Data Context | Trading Context | Kafka topic `crypto.price.raw` |
+| Market Data Context | Notification Context | Kafka topic `crypto.price.raw` |
+| Portfolio Management Context | Notification Context | Kafka topic (portfolio value events) |
+| Trading Context | Portfolio Management Context | Kafka topic `portfolio.transactions` |
+| User & Identity Context | Portfolio / Trading | `userId` propagated in event payloads |
