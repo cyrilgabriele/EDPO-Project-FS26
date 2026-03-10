@@ -4,6 +4,6 @@ import java.math.BigDecimal;
 
 /**
  * Domain object representing a single price snapshot for one trading symbol,
- * as returned by the Binance REST API.
+ * as received from the Binance WebSocket ticker stream.
  */
 public record PriceTick(String symbol, BigDecimal price) {}

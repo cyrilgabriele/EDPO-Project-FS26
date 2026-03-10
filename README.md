@@ -11,12 +11,12 @@
 
 CryptoFlow is a crypto portfolio simulation platform built to demonstrate event-driven architecture patterns using Apache Kafka and Spring Boot. Two microservices communicate **exclusively via Kafka** – there is no REST call between them:
 
-- **`market-data-service`** polls the Binance public API every 10 seconds and publishes one price event per symbol to Kafka.
+- **`market-data-service`** subscribes to Binance WebSocket streams and publishes real-time price events per symbol to Kafka.
 - **`portfolio-service`** consumes those events and maintains a local price replica, which it uses to answer portfolio valuation queries via its own REST API.
 
 ```
-  Binance REST API
-        │  GET /api/v3/ticker/price
+  Binance WebSocket API
+        │  wss://stream.binance.com:9443/ws/<symbol>@ticker
         ▼
 ┌──────────────────────┐         Topic: crypto.price.raw          ┌──────────────────────┐
 │  market-data-service │ ────────────────────────────────────────▶│  portfolio-service   │
@@ -78,38 +78,38 @@ Both services connect to `localhost:9092` (Kafka) and `localhost:5432` (Postgres
 
 ## How the Market Data Service Works (Producer)
 
-### Binance polling
+### Binance WebSocket stream
 
-Every **10 seconds** (configurable via `BINANCE_POLL_INTERVAL_MS`), `PricePollingScheduler` fires and calls `BinanceApiClient`:
+On startup, `BinanceWebSocketClient` opens a persistent WebSocket connection to Binance and subscribes to ticker streams for the configured symbols:
 
 ```
-GET https://api.binance.com/api/v3/ticker/price
-    ?symbols=["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT"]
+wss://stream.binance.com:9443/ws/btcusdt@ticker/ethusdt@ticker/solusdt@ticker/bnbusdt@ticker/xrpusdt@ticker
 ```
 
-This is a **public endpoint** – no API key needed. Binance returns a JSON array:
+This is a **public endpoint** – no API key needed. Binance pushes ticker updates in real time:
 
 ```json
-[
-  { "symbol": "BTCUSDT", "price": "95241.32" },
-  { "symbol": "ETHUSDT", "price": "3412.17" },
+{
+  "e": "24hrTicker",
+  "s": "BTCUSDT",
+  "c": "95241.32",
   ...
-]
+}
 ```
 
 ### Event production
 
-For each symbol in the response, `PriceEventMapper` wraps it in a `CryptoPriceUpdatedEvent` (a Java record with a fresh UUID `eventId`, symbol, price, and timestamp) and `CryptoPriceKafkaProducer` sends it to Kafka:
+For each incoming ticker message, `PriceEventMapper` wraps it in a `CryptoPriceUpdatedEvent` (a Java record with a fresh UUID `eventId`, symbol, price, and timestamp) and `CryptoPriceKafkaProducer` sends it to Kafka:
 
 - **Topic:** `crypto.price.raw` (3 partitions)
 - **Message key:** the symbol string (e.g. `BTCUSDT`) — this guarantees all events for one symbol always land on the **same partition**, preserving per-symbol ordering.
 - **Serialisation:** JSON (Jackson)
 
-So with 5 symbols and a 10 s interval, you get **5 messages every 10 seconds**.
+The event rate is determined by Binance (market activity), not a fixed schedule — events arrive in real time.
 
 ### Failure handling
 
-If the Binance API is unreachable or returns an error, `BinanceApiClient.fetchPrices()` returns an empty list and logs a warning. The scheduler simply skips that cycle — no broken message enters Kafka.
+If the WebSocket connection drops, `BinanceWebSocketClient` automatically reconnects with exponential backoff. During the disconnection window, no events are published — consumers continue serving queries from their cached state (ECST).
 
 ---
 
@@ -141,7 +141,7 @@ The cached prices power three endpoints:
 Open **http://localhost:8080** in your browser.
 
 - **Topics** tab → click `crypto.price.raw` → **Messages** tab
-- You will see new messages arriving every 10 seconds, one per symbol
+- You will see new messages arriving in real time as Binance pushes ticker updates
 - Each message shows: key = symbol (e.g. `BTCUSDT`), value = JSON event, partition, offset
 
 ### 2. market-data-service logs
@@ -174,7 +174,7 @@ Consumed price event: eventId=... symbol=BTCUSDT price=95241.32
 
 ### 4. portfolio-service REST API
 
-After ~10 seconds of runtime, prices are cached and you can query them:
+After a few seconds of runtime, prices are cached and you can query them:
 
 ```bash
 # All cached prices
@@ -204,9 +204,8 @@ curl http://localhost:8082/prices/BTCUSDT
 
 | Property | Default | Env var override |
 |---|---|---|
-| `binance.base-url` | `https://api.binance.com` | `BINANCE_BASE_URL` |
+| `binance.stream-url` | `wss://stream.binance.com:9443/ws` | `BINANCE_STREAM_URL` |
 | `binance.symbols` | `BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT` | — |
-| `binance.poll-interval-ms` | `10000` | `BINANCE_POLL_INTERVAL_MS` |
 | `spring.kafka.bootstrap-servers` | `localhost:9092` | `KAFKA_BOOTSTRAP_SERVERS` |
 
 ### portfolio-service (`application.yml`)
@@ -230,8 +229,7 @@ EDPO-Project-HS26/
 │   └── .../events/CryptoPriceUpdatedEvent.java
 │
 ├── market-data-service/             ← Producer (port 8081)
-│   ├── adapter/in/scheduling/       ← @Scheduled polling trigger
-│   ├── adapter/out/binance/         ← Binance REST client (WebClient)
+│   ├── adapter/in/binance/           ← Binance WebSocket stream client
 │   ├── adapter/out/kafka/           ← KafkaTemplate producer
 │   ├── application/                 ← PriceEventMapper
 │   ├── domain/                      ← PriceTick domain object
@@ -259,7 +257,7 @@ EDPO-Project-HS26/
 
 | Pattern | Where |
 |---|---|
-| **Event Notification** | `market-data-service` emits price events with no knowledge of who consumes them. Adding a new consumer requires zero changes to the producer. |
+| **Event Notification** | `market-data-service` receives Binance stream updates and emits price events with no knowledge of who consumes them. Adding a new consumer requires zero changes to the producer. |
 | **Event-carried State Transfer (ECST)** | `portfolio-service` maintains a local price replica from Kafka events. It never calls `market-data-service` directly, making it resilient to producer downtime. |
 
 See [`PROJECT_ARCHITECTURE.md`](docs/PROJECT_ARCHITECTURE.md) for the full design document.

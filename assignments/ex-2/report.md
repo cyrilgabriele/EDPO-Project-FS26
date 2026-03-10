@@ -13,7 +13,7 @@ Project Link: [https://github.com/cyrilgabriele/EDPO-Project-FS26](https://githu
 
 ### What was implemented
 
-A Kafka producer service that polls the Binance public REST API on a fixed schedule and publishes one price event per symbol to Kafka. The service is structured as a Maven multi-module project alongside `portfolio-service`, with a shared `shared-events` module containing the event record used by both services.
+A Kafka producer service that subscribes to Binance WebSocket streams and publishes real-time price events per symbol to Kafka. The service is structured as a Maven multi-module project alongside `portfolio-service`, with a shared `shared-events` module containing the event record used by both services.
 
 **Module layout:**
 
@@ -24,8 +24,7 @@ The service follows hexagonal (ports & adapters) architecture:
 
 | Layer | Package | Component |
 | --- | --- | --- |
-| Inbound adapter | `adapter/in/scheduling` | `PricePollingScheduler` – drives the polling loop via `@Scheduled` |
-| Outbound adapter | `adapter/out/binance` | `BinanceApiClient` – calls `GET /api/v3/ticker/price` via Spring `WebClient` |
+| Inbound adapter | `adapter/in/binance` | `BinanceWebSocketClient` – subscribes to Binance ticker streams, receives push updates |
 | Outbound adapter | `adapter/out/kafka` | `CryptoPriceKafkaProducer` – publishes events via `KafkaTemplate` |
 | Application | `application` | `PriceEventMapper` – maps `PriceTick` → `CryptoPriceUpdatedEvent` |
 | Domain | `domain` | `PriceTick` record – pure domain object, no framework dependencies |
@@ -34,7 +33,7 @@ The service follows hexagonal (ports & adapters) architecture:
 
 - Topic `crypto.price.raw` with 3 partitions; topic `crypto.price.raw.DLT` with 1 partition, both declared as `@Bean NewTopic`
 - Producer uses `acks=all` and the trading symbol (e.g. `BTCUSDT`) as the message key, guaranteeing per-symbol partition affinity and ordering
-- Symbols polled: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `BNBUSDT`, `XRPUSDT` (configurable); polling interval: 10 s (configurable via `BINANCE_POLL_INTERVAL_MS`)
+- Symbols subscribed: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `BNBUSDT`, `XRPUSDT` (configurable); price updates arrive in real time via Binance WebSocket streams
 
 **EDA pattern demonstrated – Event Notification:**
 The producer emits a `CryptoPriceUpdatedEvent` per symbol on every cycle with no knowledge of, or dependency on, any consumer. New consumers can subscribe to `crypto.price.raw` without any change to this service.
@@ -70,7 +69,7 @@ Flyway manages the schema with `V1__create_portfolio_tables.sql`. Two tables:
 | `GET` | `/prices` | Returns full local price cache as `Map<String, BigDecimal>` |
 
 **EDA pattern demonstrated – Event-Carried State Transfer (ECST):**
-`PriceEventConsumer` updates `LocalPriceCache` on every received event. `PortfolioService.calculateTotalValue()` multiplies each holding's quantity by the cached price — no synchronous call to `market-data-service` is made at query time. The service continues to answer REST requests even when the producer is offline, at the cost of eventual consistency (prices lag by up to one polling interval).
+`PriceEventConsumer` updates `LocalPriceCache` on every received event. `PortfolioService.calculateTotalValue()` multiplies each holding's quantity by the cached price — no synchronous call to `market-data-service` is made at query time. The service continues to answer REST requests even when the producer is offline, at the cost of eventual consistency (prices lag until the stream reconnects).
 
 ---
 

@@ -1,42 +1,42 @@
 # Activity Diagrams
 
-## 1. Price Polling & Publishing Workflow (market-data-service)
+## 1. WebSocket Stream & Publishing Workflow (market-data-service)
 
 ```mermaid
 flowchart TD
-    A([Scheduler fires every 10s]) --> B[Call BinanceApiClient.fetchPrices]
-    B --> C{API response?}
+    A([Application starts]) --> B[Open WebSocket to Binance]
+    B --> C[Subscribe to configured symbol streams]
+    C --> D{Connection established?}
 
-    C -->|Success| D[Receive JSON array of prices]
-    C -->|Error / Timeout| E{Retry count < 3?}
-
-    E -->|Yes| F[Wait exponential backoff]
+    D -->|No| E{Max reconnect attempts?}
+    E -->|No| F[Wait exponential backoff]
     F --> B
-    E -->|No| G[Log warning, return empty list]
-    G --> H([Skip cycle, wait for next tick])
+    E -->|Yes| G[Log critical error, enter retry loop]
+    G --> H([Wait longer backoff, retry from start])
+    H --> B
 
-    D --> I{Response empty?}
-    I -->|Yes| H
-    I -->|No| J[Filter for configured symbols]
+    D -->|Yes| I([Listening: await next ticker message])
 
-    J --> K["Loop: for each symbol"]
-    K --> L["PriceEventMapper.map(symbol, price)<br/>→ CryptoPriceUpdatedEvent(UUID, symbol, price, now)"]
-    L --> M["KafkaProducer.send(key=symbol, value=event)"]
-    M --> N{Kafka ack?}
+    I --> J[Receive ticker update from Binance]
+    J --> K["PriceEventMapper.map(symbol, price)<br/>→ CryptoPriceUpdatedEvent(UUID, symbol, price, now)"]
+    K --> L["KafkaProducer.send(key=symbol, value=event)"]
+    L --> M{Kafka ack?}
 
-    N -->|Success| O[Log: Published event for SYMBOL → partition P offset O]
-    N -->|Failure| P[Log error, event lost for this cycle]
+    M -->|Success| N[Log: Published event for SYMBOL → partition P offset O]
+    M -->|Failure| O[Log error, event lost]
 
-    O --> Q{More symbols?}
-    P --> Q
-    Q -->|Yes| K
-    Q -->|No| H
+    N --> I
+    O --> I
+
+    I --> P{Connection dropped?}
+    P -->|Yes| Q[Log warning: WebSocket disconnected]
+    Q --> B
 
     style A fill:#e3f2fd,stroke:#1565c0
-    style H fill:#e3f2fd,stroke:#1565c0
+    style I fill:#e3f2fd,stroke:#1565c0
     style G fill:#ffebee,stroke:#c62828
-    style P fill:#ffebee,stroke:#c62828
-    style O fill:#e8f5e9,stroke:#2e7d32
+    style O fill:#ffebee,stroke:#c62828
+    style N fill:#e8f5e9,stroke:#2e7d32
 ```
 
 ## 2. Event Consumption & Error Handling Workflow (portfolio-service)

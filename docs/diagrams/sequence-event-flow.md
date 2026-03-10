@@ -1,11 +1,11 @@
 # Sequence Diagram – Event Flow
 
-## Happy Path: Price Polling → Portfolio Update
+## Happy Path: WebSocket Stream → Portfolio Update
 
 ```mermaid
 sequenceDiagram
-    participant Scheduler as PricePollingScheduler<br/>(@Scheduled 10s)
-    participant Binance as Binance REST API
+    participant WSClient as BinanceWebSocketClient
+    participant Binance as Binance WebSocket<br/>wss://stream.binance.com
     participant Mapper as PriceEventMapper
     participant Producer as CryptoPriceKafkaProducer
     participant Kafka as Kafka<br/>crypto.price.raw
@@ -14,17 +14,17 @@ sequenceDiagram
     participant REST as PortfolioController<br/>(REST API)
     participant Client as HTTP Client
 
-    loop Every 10 seconds
-        Scheduler->>Binance: GET /api/v3/ticker/price?symbols=[...]
-        Binance-->>Scheduler: JSON array [{symbol, price}, ...]
+    WSClient->>Binance: connect wss://stream.binance.com:9443/ws
+    WSClient->>Binance: subscribe(btcusdt@ticker, ethusdt@ticker, ...)
+    Binance-->>WSClient: subscription confirmed
 
-        loop For each symbol (BTCUSDT, ETHUSDT, ...)
-            Scheduler->>Mapper: map(symbol, price)
-            Mapper-->>Scheduler: CryptoPriceUpdatedEvent
-            Scheduler->>Producer: send(event)
-            Producer->>Kafka: produce(key=symbol, value=event)
-            Kafka-->>Producer: ack (offset)
-        end
+    loop Continuous stream (push from Binance)
+        Binance->>WSClient: ticker update {symbol, price, ...}
+        WSClient->>Mapper: map(symbol, price)
+        Mapper-->>WSClient: CryptoPriceUpdatedEvent
+        WSClient->>Producer: send(event)
+        Producer->>Kafka: produce(key=symbol, value=event)
+        Kafka-->>Producer: ack (offset)
     end
 
     loop Continuous consumption
@@ -39,28 +39,31 @@ sequenceDiagram
     REST-->>Client: {"symbol":"BTCUSDT","price":95241.32}
 ```
 
-## Error Path: Binance API Failure with Retry
+## Error Path: WebSocket Disconnection & Reconnect
 
 ```mermaid
 sequenceDiagram
-    participant Scheduler as PricePollingScheduler
-    participant Client as BinanceApiClient<br/>(@Retryable)
-    participant Binance as Binance REST API
+    participant WSClient as BinanceWebSocketClient
+    participant Binance as Binance WebSocket
 
-    Scheduler->>Client: fetchPrices()
-    Client->>Binance: GET /api/v3/ticker/price
-    Binance-->>Client: 503 Service Unavailable
+    WSClient->>Binance: connected, receiving stream
+    Binance-->>WSClient: ticker update ...
 
-    Note over Client: Retry 1 (exponential backoff)
-    Client->>Binance: GET /api/v3/ticker/price
-    Binance-->>Client: 503 Service Unavailable
+    Note over Binance,WSClient: Connection drops (network issue / Binance maintenance)
+    Binance--xWSClient: connection lost
 
-    Note over Client: Retry 2 (exponential backoff)
-    Client->>Binance: GET /api/v3/ticker/price
-    Binance-->>Client: 503 Service Unavailable
+    Note over WSClient: Detect disconnect, log warning
+    Note over WSClient: Reconnect attempt 1 (backoff: 1s)
+    WSClient->>Binance: connect wss://stream.binance.com:9443/ws
+    Binance--xWSClient: connection refused
 
-    Client-->>Scheduler: empty list
-    Note over Scheduler: Skip cycle, log warning.<br/>No broken event enters Kafka.
+    Note over WSClient: Reconnect attempt 2 (backoff: 2s)
+    WSClient->>Binance: connect wss://stream.binance.com:9443/ws
+    Binance-->>WSClient: connected
+
+    WSClient->>Binance: subscribe(btcusdt@ticker, ethusdt@ticker, ...)
+    Binance-->>WSClient: subscription confirmed
+    Note over WSClient: Resume normal stream processing.<br/>Consumers served from cached state during gap.
 ```
 
 ## Error Path: Poison Pill → Dead Letter Topic

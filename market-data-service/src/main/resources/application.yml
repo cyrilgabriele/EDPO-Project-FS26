@@ -16,13 +16,11 @@ spring:
       properties:
         spring.json.add.type.headers: false
 
-# Binance REST API configuration
+# Binance WebSocket stream configuration
 binance:
-  base-url: ${BINANCE_BASE_URL:https://api.binance.com}
-  # Comma-separated list of trading pairs to poll
-  symbols: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT
-  # Polling interval in milliseconds (default: 10 s)
-  poll-interval-ms: ${BINANCE_POLL_INTERVAL_MS:10000}
+  stream-url: ${BINANCE_STREAM_URL:wss://stream.binance.com:9443/ws}
+  # Comma-separated list of trading pairs to subscribe to
+  symbols: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,LTCUSDT
 
 # Kafka topic names
 crypto:
@@ -30,6 +28,7 @@ crypto:
     topic:
       price-raw: crypto.price.raw
       price-raw-dlt: crypto.price.raw.DLT
+      price-raw-partitions: 3
 
 management:
   endpoints:

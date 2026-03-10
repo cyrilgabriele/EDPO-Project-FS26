@@ -162,33 +162,35 @@
     <section>
       <h2>Architecture</h2>
       <pre class="diagram">
+  Binance WebSocket API
+  wss://stream.binance.com:9443/ws
+                    │ push ticker updates
+                    ▼
   ┌───────────────────────────────────────┐
   │        market-data-service            │
   │                                       │
-  │  ┌─────────────┐  @Scheduled(10 s)    │
-  │  │ Binance API │──────────────────┐   │
-  │  │  (REST)     │                  ▼   │
-  │  └─────────────┘   ┌─────────────────┐│
-  │                    │PricePolling     ││
-  │                    │Scheduler        ││
-  │                    └───────┬─────────┘│
-  │                            │          │
-  │                    ┌───────▼─────────┐│
-  │                    │KafkaProducer    ││
-  │                    │key = symbol     ││
-  │                    └───────┬─────────┘│
-  └────────────────────────────┼──────────┘
-                               │
-                    topic: crypto.price.raw
-                        (3 partitions)
-                               │
-              ┌────────────────▼──────────┐
-              │       Apache Kafka        │
-              └────────────────┬──────────┘
-                               │
-                    (any service may subscribe —
-                     producer has no knowledge
-                     of who listens)
+  │   ┌──────────────────────────────┐    │
+  │   │  BinanceWebSocketClient      │    │
+  │   │  (subscribes to streams,     │    │
+  │   │   auto-reconnects on drop)   │    │
+  │   └─────────────┬────────────────┘    │
+  │                 │                     │
+  │         ┌───────▼─────────┐           │
+  │         │KafkaProducer    │           │
+  │         │key = symbol     │           │
+  │         └───────┬─────────┘           │
+  └─────────────────┼─────────────────────┘
+                    │
+         topic: crypto.price.raw
+             (3 partitions)
+                    │
+       ┌────────────▼──────────┐
+       │     Apache Kafka      │
+       └────────────┬──────────┘
+                    │
+         (any service may subscribe —
+          producer has no knowledge
+          of who listens)
       </pre>
     </section>
 
@@ -197,7 +199,7 @@
       <p>
         The <strong>Event Notification</strong> pattern decouples the producer from
         all consumers. This service publishes a <code>CryptoPriceUpdatedEvent</code>
-        for each symbol every poll cycle, then forgets about it.
+        for each ticker update received from Binance, then forgets about it.
       </p>
       <p>
         Any number of downstream services can subscribe to <code>crypto.price.raw</code>
@@ -215,7 +217,7 @@
       </div>
       <div class="key-point green">
         <span class="icon">&#10003;</span>
-        <span>Polling interval: <strong>10 s</strong> (configurable via <code>BINANCE_POLL_INTERVAL_MS</code>).</span>
+        <span>Real-time delivery via <strong>Binance WebSocket streams</strong> with automatic reconnection on disconnect.</span>
       </div>
 
       <div id="info-chips" class="info-chips">
@@ -241,11 +243,11 @@
 
       <span class="field">price</span>
       <span class="type">BigDecimal</span>
-      <span class="desc">Current mid-price in USDT as reported by the Binance REST API.</span>
+      <span class="desc">Current mid-price in USDT as reported by the Binance WebSocket stream.</span>
 
       <span class="field">timestamp</span>
       <span class="type">Instant (ISO-8601)</span>
-      <span class="desc">UTC timestamp of the Binance API response — not the publish time.</span>
+      <span class="desc">UTC timestamp when the event was created — not the Kafka publish time.</span>
     </div>
   </section>
 
@@ -256,7 +258,7 @@
       <div class="live-meta">
         <span><span id="dot" class="dot red"></span>&nbsp;<span id="status-text">connecting…</span></span>
         <span>Updated: <span id="last-updated">–</span></span>
-        <span>Interval: 5 s</span>
+        <span>Interval: 1 s</span>
       </div>
     </div>
     <table>
@@ -280,7 +282,7 @@
 </main>
 
 <script>
-  const REFRESH_MS = 5000;
+  const REFRESH_MS = 1000;
 
   function fmt(iso) {
     if (!iso) return '–';
@@ -316,7 +318,7 @@
       const tbody = document.getElementById('events-body');
       const events = data.recentEvents || [];
       if (events.length === 0) {
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No events published yet — first poll in progress…</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No events published yet — waiting for Binance stream…</td></tr>';
         return;
       }
       tbody.innerHTML = events.map(e => `

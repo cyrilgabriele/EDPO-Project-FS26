@@ -20,7 +20,7 @@ The MVP focuses on the event-streaming backbone:
 
 | Service | Role |
 |---|---|
-| `market-data-service` | Polls the Binance REST API on a fixed schedule and **produces** price events to Kafka |
+| `market-data-service` | Subscribes to Binance WebSocket streams and **produces** price events to Kafka |
 | `portfolio-service` | **Consumes** price events and maintains a local, eventually-consistent price state (ECST) |
 
 These two services are sufficient to demonstrate at least two EDA patterns from Lecture 2 and the Kafka producer/consumer split with Spring Kafka.
@@ -33,7 +33,7 @@ Domain-Driven Design identifies the following bounded contexts in the full appli
 
 ### 3.1 Market Data Context *(MVP)*
 **Responsibility:** Acquiring, normalising, and publishing raw market data.
-**Owns:** price tick data, symbol catalogue, polling schedule.
+**Owns:** price tick data, symbol catalogue, stream subscriptions.
 **Does not own:** portfolio state, user preferences, orders.
 **Produces:** `CryptoPriceUpdatedEvent`
 
@@ -70,10 +70,10 @@ Domain-Driven Design identifies the following bounded contexts in the full appli
 ┌──────────────────────────────────────────────────┐
 │                market-data-service               │
 │                                                  │
-│  ┌──────────────┐     ┌────────────────────────┐ │
-│  │  Scheduling  │────▶│  BinanceApiClient      │ │
-│  │  (@Scheduled)│     │  (Spring WebClient)    │ │
-│  └──────────────┘     └──────────┬─────────────┘ │
+│  ┌──────────────────────────────────────────────┐ │
+│  │  BinanceWebSocketClient                     │ │
+│  │  (subscribes to Binance ticker streams)     │ │
+│  └──────────────────────┬───────────────────── ┘ │
 │                                  │               │
 │                         ┌────────▼─────────────┐ │
 │                         │  PriceEventMapper    │ │
@@ -90,13 +90,13 @@ Domain-Driven Design identifies the following bounded contexts in the full appli
 ```
 
 **Key responsibilities:**
-- Polls `GET https://api.binance.com/api/v3/ticker/price` every configurable interval (default: 10 s)
-- Filters for a configurable list of symbols (e.g. `BTCUSDT`, `ETHUSDT`, `SOLUSDT`)
-- Maps raw API response to `CryptoPriceUpdatedEvent` (see Section 6)
+- Subscribes to Binance WebSocket streams (`wss://stream.binance.com:9443/ws/<symbol>@ticker`) for a configurable list of symbols (e.g. `BTCUSDT`, `ETHUSDT`, `SOLUSDT`)
+- Receives real-time push ticker updates from Binance
+- Maps incoming ticker messages to `CryptoPriceUpdatedEvent` (see Section 6)
 - Publishes to Kafka topic `crypto.price.raw` with the symbol as the message key (for partition affinity)
-- Handles Binance API unavailability gracefully (see Section 8)
+- Handles WebSocket disconnections with automatic reconnection and exponential backoff (see Section 8)
 
-**Spring components:** `@Scheduled`, `WebClient`, `KafkaTemplate<String, CryptoPriceUpdatedEvent>`
+**Spring components:** `WebSocketClient`, `KafkaTemplate<String, CryptoPriceUpdatedEvent>`
 
 ### 4.2 `portfolio-service` (Consumer + State)
 
@@ -228,8 +228,7 @@ public record AssetPurchasedEvent(
 cryptoflow/
 ├── market-data-service/
 │   ├── src/main/java/ch/unisg/cryptoflow/marketdata/
-│   │   ├── adapter/in/scheduling/     # @Scheduled polling
-│   │   ├── adapter/out/binance/       # Binance REST client
+│   │   ├── adapter/in/binance/         # Binance WebSocket stream client
 │   │   ├── adapter/out/kafka/         # KafkaTemplate producer
 │   │   ├── application/               # Use cases (ports & adapters)
 │   │   └── domain/                    # PriceTick domain object
@@ -307,10 +306,10 @@ services:
 
 These are the error and fault scenarios to be demonstrated in the project report and/or live demo.
 
-### 8.1 Binance API Unavailability (Producer-side failure)
-**Scenario:** The Binance REST API returns a 5xx error or is unreachable.
-**Handling:** Spring's `@Retryable` on the API client with exponential backoff (3 retries, doubling delay). If all retries fail, the scheduler skips the current cycle and emits a log warning. No dead-letter required here since the *producer* simply does not publish – no event enters Kafka in a broken state.
-**What to demonstrate:** Simulate by pointing the service at a wrong URL and observing the retry behaviour in logs without Kafka being affected.
+### 8.1 Binance WebSocket Disconnection (Producer-side failure)
+**Scenario:** The Binance WebSocket stream drops due to a network issue or Binance maintenance.
+**Handling:** The `BinanceWebSocketClient` detects the disconnect and automatically reconnects with exponential backoff. During the disconnection window, no events are published to Kafka. Consumers continue serving queries from their cached state (ECST).
+**What to demonstrate:** Simulate by blocking the WebSocket endpoint (e.g. via a firewall rule or Docker network disconnect) and observing the reconnection attempts in logs, followed by resumed event flow once connectivity is restored.
 
 ### 8.2 Consumer Failure & At-Least-Once Delivery
 **Scenario:** The `portfolio-service` crashes while processing a batch of events. Kafka retains the uncommitted offsets.
@@ -358,7 +357,7 @@ The key architectural distinction this introduces is **orchestration** (Camunda 
 | Messaging | Apache Kafka | Durable, partitioned log; fits all four EDA patterns; required by exercise |
 | Containerisation | Docker + Compose | Reproducible local dev, simple CI |
 | Database | PostgreSQL | Portfolio state persistence; well-supported via Spring Data JPA |
-| Binance Integration | Public REST API (no key needed) | `/api/v3/ticker/price` endpoint, rate-limit-safe at 10 s polling interval |
+| Binance Integration | Public WebSocket API (no key needed) | `wss://stream.binance.com:9443/ws/<symbol>@ticker` stream, real-time push delivery |
 | Build | Maven (multi-module) | Allows shared `shared-events` module depended on by both services |
 | Kafka Serialisation | JSON (Jackson) | Simpler setup for MVP; can migrate to Avro + Schema Registry later |
 

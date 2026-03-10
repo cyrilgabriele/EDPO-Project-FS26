@@ -26,7 +26,7 @@ graph TB
         end
 
         subgraph external["External"]
-            binance["Binance REST API<br/>api.binance.com"]
+            binance["Binance WebSocket API<br/>stream.binance.com"]
         end
 
         subgraph volumes["Docker Volumes"]
@@ -47,7 +47,7 @@ graph TB
     mds -->|"produce events<br/>kafka:29092"| kafka
     kafka -->|"consume events<br/>kafka:29092"| ps
     ps -->|"JDBC<br/>postgres:5432"| postgres
-    mds -->|"GET /api/v3/ticker/price<br/>HTTPS"| binance
+    binance -->|"WSS push<br/>ticker stream"| mds
     kafkaui -->|"monitor<br/>kafka:29092"| kafka
     pgadmin -->|"admin<br/>postgres:5432"| postgres
 

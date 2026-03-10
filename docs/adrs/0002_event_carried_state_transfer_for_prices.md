@@ -18,6 +18,6 @@ We use Event-Carried State Transfer (ECST). The portfolio-service consumes `Cryp
 
 - **Resilience:** The portfolio-service continues to serve valuations even when market-data-service is down, using the last known prices.
 - **Low latency:** No network round-trip for price lookups; valuations are computed from local memory.
-- **Staleness:** Cached prices may be slightly behind real-time. This is acceptable given the 10-second polling interval already introduces delay.
+- **Staleness:** Cached prices may be slightly behind real-time. With WebSocket streams the delay is sub-second under normal conditions, but during reconnection windows the cache serves the last known price.
 - **Warm-up period:** After a cold start, the cache is empty until the first events arrive. The service returns HTTP 503 during this phase.
 - **Memory footprint:** Negligible for the current 5 symbols, but would need review if scaled to hundreds of symbols.

@@ -13,7 +13,7 @@
 
     <artifactId>market-data-service</artifactId>
     <name>CryptoFlow – Market Data Service</name>
-    <description>Polls Binance REST API on a fixed schedule and publishes CryptoPriceUpdatedEvent to Kafka</description>
+    <description>Subscribes to Binance WebSocket streams and publishes CryptoPriceUpdatedEvent to Kafka</description>
 
     <dependencies>
         <!-- Shared event DTOs -->
@@ -28,10 +28,10 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- WebFlux – provides WebClient for non-blocking HTTP to Binance REST API -->
+        <!-- WebSocket – provides StandardWebSocketClient for Binance stream subscription -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 
         <!-- Spring Kafka producer -->
