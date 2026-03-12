@@ -28,6 +28,7 @@ crypto:
   kafka:
     topic:
       price-raw: crypto.price.raw
+      price-raw-dlt: crypto.price.raw.DLT
 
 management:
   endpoints:
