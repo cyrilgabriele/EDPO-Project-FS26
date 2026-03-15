@@ -20,21 +20,25 @@ public class UserEntity {
     @Column(name = "password", nullable = false)
     private String password;
 
+    @Column(name = "email", nullable = false)
+    private String email;
+
     protected UserEntity() {
         // required by JPA
     }
 
-    private UserEntity(String userId, String username, String password) {
+    private UserEntity(String userId, String username, String password, String email) {
         this.userId = userId;
         this.username = username;
         this.password = password;
+        this.email = email;
     }
 
     public static UserEntity fromDomain(User user) {
-        return new UserEntity(user.getUserId(), user.getUsername(), user.getPassword());
+        return new UserEntity(user.getUserId(), user.getUsername(), user.getPassword(), user.getEmail());
     }
 
     public User toDomain() {
-        return new User(username, password, userId);
+        return new User(username, password, userId, email);
     }
 }

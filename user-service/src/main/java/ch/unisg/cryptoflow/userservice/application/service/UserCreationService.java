@@ -17,7 +17,7 @@ public class UserCreationService implements CreateUserUseCase {
 
     @Override
     public User createUser(CreateUserCommand command) {
-        User user = new User(command.userName(), command.password(), command.userId());
+        User user = new User(command.userName(), command.password(), command.userId(), command.email());
         return saveUserPort.save(user);
     }
 }

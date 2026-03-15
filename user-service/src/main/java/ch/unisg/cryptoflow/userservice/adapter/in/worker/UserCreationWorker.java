@@ -11,9 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.Collections;
-import java.util.UUID;
-
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -25,15 +23,20 @@ public class UserCreationWorker {
     @JobWorker(type="userCreationWorker")
     public void handleCreateUserRequest(JobClient client, ActivatedJob job) {
         log.info("Service Task started via Worker");
-        UserCreationContext userCreationContext = UserCreationContext.fromMap(job.getVariablesAsMap());
+        Map<String, Object> variables = job.getVariablesAsMap();
+        UserCreationContext userCreationContext = UserCreationContext.fromMap(variables);
 
-        String userId = UUID.randomUUID().toString();
-        CreateUserCommand command = new CreateUserCommand(userId, userCreationContext.getUserName(), userCreationContext.getPassword());
+        Object userIdVariable = variables.get("userId");
+        if (userIdVariable == null) {
+            throw new IllegalStateException("UserId variable missing for user creation job " + job.getKey());
+        }
+        String userId = userIdVariable.toString();
+
+        CreateUserCommand command = new CreateUserCommand(userId, userCreationContext.getUserName(), userCreationContext.getPassword(), userCreationContext.getEmail());
         User user = createUserUseCase.createUser(command);
 
-        log.info("Persisted user {} with userId {}", user.getUsername(), user.getUserId());
-        client.newCompleteCommand(job.getKey()) //
-                .variables(Collections.singletonMap("UserId", userId))
+        log.info("Persisted user {} with userId {} and email {}", user.getUsername(), user.getUserId(), user.getEmail());
+        client.newCompleteCommand(job.getKey())
                 .send().join();
     }
 }

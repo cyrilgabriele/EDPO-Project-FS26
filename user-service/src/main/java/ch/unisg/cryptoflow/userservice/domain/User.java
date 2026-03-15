@@ -10,10 +10,13 @@ public class User {
     private String password;
     @Getter
     private String userId;
+    @Getter
+    private String email;
 
-    public User(String username, String password, String userId) {
+    public User(String username, String password, String userId, String email) {
         this.userId = userId;
         this.username = username;
         this.password = password;
+        this.email = email;
     }
 }

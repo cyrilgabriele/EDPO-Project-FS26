@@ -1,6 +1,5 @@
 package ch.unisg.cryptoflow.userservice;
 
-import ch.unisg.cryptoflow.userservice.adapter.in.worker.UserCreationWorker;
 import io.camunda.zeebe.spring.client.annotation.Deployment;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
