@@ -20,10 +20,10 @@ camunda:
   client:
     mode: saas
     auth:
-      client-id: ${CAMUNDA_CLIENT_ID:set-this-in-dot-env}
-      client-secret: ${CAMUNDA_CLIENT_SECRET:set-this-in-dot-env}
-    cluster-id: ${CAMUNDA_CLUSTER_ID:set-this-in-dot-env}
-    region: ${CAMUNDA_REGION:set-this-in-dot-env}
+      client-id: ${CAMUNDA_CLIENT_ID_TRANSACTION_SERVICE}
+      client-secret: ${CAMUNDA_CLIENT_SECRET_TRANSACTION_SERVICE}
+    cluster-id: ${CAMUNDA_CLUSTER_ID_TRANSACTION_SERVICE}
+    region: ${CAMUNDA_REGION_TRANSACTION_SERVICE}
 
 crypto:
   kafka:
