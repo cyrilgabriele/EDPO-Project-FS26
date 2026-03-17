@@ -5,9 +5,13 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.*;
 
 @Entity
 @Table(name = "users")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class UserEntity {
 
     @Id
@@ -22,17 +26,6 @@ public class UserEntity {
 
     @Column(name = "email", nullable = false)
     private String email;
-
-    protected UserEntity() {
-        // required by JPA
-    }
-
-    private UserEntity(String userId, String username, String password, String email) {
-        this.userId = userId;
-        this.username = username;
-        this.password = password;
-        this.email = email;
-    }
 
     public static UserEntity fromDomain(User user) {
         return new UserEntity(user.getUserId(), user.getUsername(), user.getPassword(), user.getEmail());
