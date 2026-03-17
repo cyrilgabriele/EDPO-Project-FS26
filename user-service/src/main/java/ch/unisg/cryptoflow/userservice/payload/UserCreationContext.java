@@ -1,36 +1,22 @@
 package ch.unisg.cryptoflow.userservice.payload;
 
-import lombok.Getter;
-
-import java.util.HashMap;
 import java.util.Map;
 
-public class UserCreationContext {
-    @Getter
-    private String userName;
-    @Getter
-    private String password;
-    @Getter
-    private String email;
+public record UserCreationContext(String userName, String password, String email) {
 
     public static UserCreationContext fromMap(Map<String, Object> values) {
-        UserCreationContext context = new UserCreationContext();
-        context.userName = (String) values.get("userName");
-        context.password = (String) values.get("password");
-        context.email = (String) values.get("e_mail");
-        return context;
+        return new UserCreationContext(
+                (String) values.get("userName"),
+                (String) values.get("password"),
+                (String) values.get("e_mail")
+        );
     }
 
     public Map<String, String> asMap() {
-        HashMap<String, String> map = new HashMap<>();
-        map.put("userName", userName);
-        map.put("password", password);
-        map.put("e_mail", email);
-        return map;
-    }
-
-    @Override
-    public String toString() {
-        return "UserCreationContext [userName=" + userName + ", password=" + password + ", email=" + email +"]";
+        return Map.of(
+                "userName", userName,
+                "password", password,
+                "e_mail", email
+        );
     }
 }
