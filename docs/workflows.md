@@ -5,6 +5,8 @@
 > This document describes the BPMN processes deployed to Camunda 8 and argues why these
 > specific flows are orchestrated rather than handled through Kafka-based choreography.
 
+Project Link: [https://github.com/cyrilgabriele/EDPO-Project-FS26](https://github.com/cyrilgabriele/EDPO-Project-FS26)
+
 ## Orchestration vs. choreography — decision criteria
 
 CryptoFlow uses Kafka-based choreography as its default integration style: services publish
