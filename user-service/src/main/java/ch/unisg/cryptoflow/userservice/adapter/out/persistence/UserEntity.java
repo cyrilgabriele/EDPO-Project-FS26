@@ -28,7 +28,7 @@ public class UserEntity {
     private String email;
 
     public static UserEntity fromDomain(User user) {
-        return new UserEntity(user.getUserId(), user.getUsername(), user.getPassword(), user.getEmail());
+        return new UserEntity(user.userId(), user.username(), user.password(), user.email());
     }
 
     public User toDomain() {

@@ -25,13 +25,13 @@ public class UserPreparationWorker {
 
         String userId = UUID.randomUUID().toString();
         String confirmationLink = buildConfirmationLink(userId);
-        String mailContent = buildMailContent(context.getUserName(), confirmationLink);
+        String mailContent = buildMailContent(context.userName(), confirmationLink);
 
         Map<String, Object> updates = new HashMap<>();
         updates.put("userId", userId);
         updates.put("userCreationMailContent", mailContent);
 
-        log.info("Prepared user {} with email {} and confirmation link {}", context.getUserName(), context.getEmail(), confirmationLink);
+        log.info("Prepared user {} with email {} and confirmation link {}", context.userName(), context.email(), confirmationLink);
         client.newCompleteCommand(job.getKey())
             .variables(updates)
             .send()

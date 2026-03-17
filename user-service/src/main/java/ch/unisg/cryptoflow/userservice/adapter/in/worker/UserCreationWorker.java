@@ -32,10 +32,10 @@ public class UserCreationWorker {
         }
         String userId = userIdVariable.toString();
 
-        CreateUserCommand command = new CreateUserCommand(userId, userCreationContext.getUserName(), userCreationContext.getPassword(), userCreationContext.getEmail());
+        CreateUserCommand command = new CreateUserCommand(userId, userCreationContext.userName(), userCreationContext.password(), userCreationContext.email());
         User user = createUserUseCase.createUser(command);
 
-        log.info("Persisted user {} with userId {} and email {}", user.getUsername(), user.getUserId(), user.getEmail());
+        log.info("Persisted user {} with userId {} and email {}", user.username(), user.userId(), user.email());
         client.newCompleteCommand(job.getKey())
                 .send().join();
     }
