@@ -14,14 +14,14 @@ COPY transaction-service/pom.xml transaction-service/
 COPY user-service/pom.xml user-service/
 
 # Pre-download dependencies (cached as a layer)
-RUN mvn dependency:go-offline -pl portfolio-service,shared-events -am -q
+RUN mvn dependency:go-offline -pl transaction-service,shared-events -am -q
 
 # Copy source code
 COPY shared-events/src shared-events/src
-COPY portfolio-service/src portfolio-service/src
+COPY transaction-service/src transaction-service/src
 
 # Build the fat JAR
-RUN mvn package -pl portfolio-service -am -DskipTests -q
+RUN mvn package -pl transaction-service -am -DskipTests -q
 
 # ──────────────────────────────────────────────────
 # Stage 2 – Runtime (JRE 21 slim)
@@ -30,11 +30,11 @@ FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
-COPY --from=build /workspace/portfolio-service/target/*.jar app.jar
+COPY --from=build /workspace/transaction-service/target/*.jar app.jar
 
-EXPOSE 8082
+EXPOSE 8083
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD wget -qO- http://localhost:8082/actuator/health 2>/dev/null | grep -q '"status":"UP"' || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD wget -qO- http://localhost:8083/actuator/health 2>/dev/null | grep -q '"status":"UP"' || exit 1
 
 ENTRYPOINT ["java", "-jar", "app.jar"]

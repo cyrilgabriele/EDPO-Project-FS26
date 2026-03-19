@@ -1,27 +1,55 @@
-# 8. Adopt Camunda 8 for CryptoFlow orchestration
+# 8. Adopt Camunda 8 (Zeebe) as the process orchestration engine
 
 Date: 2026-03-15
-Author: Cyril Gabriele
 
 ## Status
 
-Accepted
+Accepted. Partially supersedes [ADR-0001](0001_kafka_as_sole_inter_service_communication.md) —
+Kafka remains the inter-service event bus for domain events; Zeebe is introduced as a
+complementary coordination channel for orchestrated process workflows.
 
 ## Context
 
-Upcoming BPMN workflows (user onboarding, automated trading, portfolio rebalancing) need to react directly to Kafka price streams 
-and to fan out long-running user-specific processes whenever market conditions hit thresholds. 
-Trading traffic can spike (multiple price alerts per second), so the orchestration layer must horizontally scale, stay in lockstep with Kafka, and deliver confirmation emails without building custom SMTP glue. 
-The current `user-service` already uses Camunda 8 SaaS and ships BPMN models that rely on Camunda 8 email and Kafka connectors plus Zeebe job workers.
+CryptoFlow needs long-running, multi-step workflows (order placement, user onboarding, future
+automated trading) that involve human interaction and react to Kafka price events. Pure
+choreography via Kafka lacks a process state authority, makes error compensation ad hoc, and
+requires custom tooling for visibility.
+
+**Camunda 7 / Operaton** embeds the engine in the application, stores process state in the
+application database, and requires custom client code for every Kafka or SMTP interaction.
+Horizontal scaling is possible but operationally complex.
+
+**Camunda 8 / Zeebe** runs as an external partitioned log; job workers are stateless gRPC
+clients. Kafka and SMTP steps are connector templates in the BPMN model — no client code in
+the service. A managed SaaS cluster eliminates broker operations.
 
 ## Decision
 
-Standardise on Camunda 8 (Zeebe) for all orchestration. BPMN models continue to be deployed through the `@Deployment` hook in user-service, 
-job workers stay on `io.camunda.zeebe.spring`, and message correlation keeps using the Zeebe gRPC client against the managed Camunda 8 cluster so we can attach Kafka/email connectors directly inside the processes.
+Standardise on Camunda 8 (Zeebe) for all process orchestration across CryptoFlow. BPMN models
+are deployed via the `@Deployment` hook in each service. Job workers use the
+`io.camunda.zeebe.spring` client. Message correlation targets the managed Camunda 8 SaaS
+cluster. Kafka and email integration is configured through Camunda 8 connector templates inside
+the BPMN models; no application-level Kafka producer or SMTP client is written for these steps.
+
+Kafka (ADR-0001) continues to carry all domain events between services. Zeebe handles process
+state, step coordination, and incident management within orchestrated workflows. The two channels
+are complementary and operate at different layers of the architecture.
 
 ## Consequences
 
-- **High-traffic readiness:** Zeebe's partitioned broker scales horizontally, so automated trading/rebalancing processes spawned by rapid Binance price changes keep up without blocking on a single relational job executor (the Camunda 7 model).
-- **Kafka connector fit:** Camunda 8 ships Kafka connectors that subscribe/publish directly to the same topics already defined in CryptoFlow, letting BPMN steps react to events without bespoke bridge services.
-- **Email automation:** The onboarding flow keeps its Camunda 8 email connector template (`io.camunda:email:1`), avoiding the need to maintain SMTP credentials or microservices for confirmation mails.
-- **Operational focus:** Developers continue to invest in Zeebe-specific tooling (Operate, connectors). Switching to Camunda 7 would forfeit the managed SaaS cluster and require embedded engine operations we do not staff.
+- **Scales to high-frequency automated trading:** Zeebe's partitioned log sustains thousands of
+  concurrent process instances without job-lock contention — future-proof for market-event-driven
+  automated order execution.
+- **Many open orders in parallel:** Each `placeOrder` instance waits independently for its price
+  match via `transactionId` correlation. No shared polling table or in-memory workaround required,
+  regardless of how many concurrent open offers exist.
+- **Services stay focused on domain logic:** Kafka and SMTP steps are connector templates in the
+  BPMN model — no notification client code in the application.
+- **Application database stays clean:** Zeebe owns process state; the application schema only
+  holds domain data (portfolios, transaction records).
+- **Visibility into every order:** Camunda Operate shows all in-flight and completed instances,
+  variables, and incidents — useful for debugging stuck or rejected orders.
+- **SaaS dependency:** Managed cluster availability and credential rotation must be accounted for
+  in operations.
+- **Zeebe-specific learning curve:** Stateless workers, message correlation, and FEEL differ from
+  the Camunda 7 model.

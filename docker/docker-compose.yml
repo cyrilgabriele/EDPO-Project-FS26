@@ -76,9 +76,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: cryptoflow
-      POSTGRES_USER: cryptoflow
-      POSTGRES_PASSWORD: cryptoflow
+      POSTGRES_DB: ${POSTGRES_DB:-cryptoflow}
+      POSTGRES_USER: ${POSTGRES_USER:-cryptoflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cryptoflow}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cryptoflow -d cryptoflow"]
       interval: 10s
@@ -96,8 +96,8 @@ services:
     ports:
       - "5050:80"   # http://localhost:5050
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@cryptoflow.com
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@cryptoflow.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
     volumes:
       - pgadmin-data:/var/lib/pgadmin
 
@@ -112,8 +112,8 @@ services:
     ports:
       - "8081:8081"
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      BINANCE_STREAM_URL: wss://stream.binance.com:9443/ws
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      BINANCE_STREAM_URL: ${BINANCE_STREAM_URL:-wss://stream.binance.com:9443/ws}
 
   # ── Portfolio Service ────────────────────────────────────────────────────────
   portfolio-service:
@@ -128,10 +128,27 @@ services:
     ports:
       - "8082:8082"
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cryptoflow
-      SPRING_DATASOURCE_USERNAME: cryptoflow
-      SPRING_DATASOURCE_PASSWORD: cryptoflow
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cryptoflow}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-cryptoflow}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-cryptoflow}
+
+  # ── Transaction Service ────────────────────────────────────────────────────
+  transaction-service:
+    build:
+      context: ..
+      dockerfile: transaction-service/Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      CAMUNDA_CLIENT_ID_TRANSACTION_SERVICE: ${CAMUNDA_CLIENT_ID_TRANSACTION_SERVICE}
+      CAMUNDA_CLIENT_SECRET_TRANSACTION_SERVICE: ${CAMUNDA_CLIENT_SECRET_TRANSACTION_SERVICE}
+      CAMUNDA_CLUSTER_ID_TRANSACTION_SERVICE: ${CAMUNDA_CLUSTER_ID_TRANSACTION_SERVICE}
+      CAMUNDA_REGION_TRANSACTION_SERVICE: ${CAMUNDA_REGION_TRANSACTION_SERVICE:-lhr-1}
 
   # ── User Service ─────────────────────────────────────────────────────────────
   user-service:
@@ -144,11 +161,15 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8083:8083"
+      - "8084:8084"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cryptoflow
       SPRING_DATASOURCE_USERNAME: cryptoflow
       SPRING_DATASOURCE_PASSWORD: cryptoflow
+      CAMUNDA_CLIENT_ID_USER_SERVICE: ${CAMUNDA_CLIENT_ID_USER_SERVICE}
+      CAMUNDA_CLIENT_SECRET_USER_SERVICE: ${CAMUNDA_CLIENT_SECRET_USER_SERVICE}
+      CAMUNDA_CLUSTER_ID_USER_SERVICE: ${CAMUNDA_CLUSTER_ID_USER_SERVICE}
+      CAMUNDA_REGION_USER_SERVICE: ${CAMUNDA_REGION_USER_SERVICE:-lhr-1}
 
 volumes:
   postgres-data:

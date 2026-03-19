@@ -1,0 +1,36 @@
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  application:
+    name: user-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/cryptoflow}
+    username: ${SPRING_DATASOURCE_USERNAME:cryptoflow}
+    password: ${SPRING_DATASOURCE_PASSWORD:cryptoflow}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          lob:
+            non_contextual_creation: true
+    open-in-view: false
+
+server:
+  port: 8084
+
+camunda:
+  client:
+    mode: saas
+    auth:
+      client-id: ${CAMUNDA_CLIENT_ID_USER_SERVICE}
+      client-secret: ${CAMUNDA_CLIENT_SECRET_USER_SERVICE}
+    cluster-id: ${CAMUNDA_CLUSTER_ID_USER_SERVICE}
+    region: ${CAMUNDA_REGION_USER_SERVICE}
+
+user:
+  confirmation:
+    base-url: ${USER_CONFIRMATION_BASE_URL:http://localhost:8084}

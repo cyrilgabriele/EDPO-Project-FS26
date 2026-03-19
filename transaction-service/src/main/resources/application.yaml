@@ -1,0 +1,38 @@
+server:
+  port: 8083
+
+logging:
+  level:
+    root: WARN
+    ch.unisg.cryptoflow.transaction.adapter.in.camunda: DEBUG
+    ch.unisg.cryptoflow.transaction.application: DEBUG
+
+spring:
+  application:
+    name: transaction-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: transaction-service-group
+      auto-offset-reset: earliest
+
+camunda:
+  client:
+    mode: saas
+    auth:
+      client-id: ${CAMUNDA_CLIENT_ID_TRANSACTION_SERVICE}
+      client-secret: ${CAMUNDA_CLIENT_SECRET_TRANSACTION_SERVICE}
+    cluster-id: ${CAMUNDA_CLUSTER_ID_TRANSACTION_SERVICE}
+    region: ${CAMUNDA_REGION_TRANSACTION_SERVICE}
+
+crypto:
+  kafka:
+    topic:
+      price-raw: crypto.price.raw
+      price-raw-dlt: crypto.price.raw.DLT
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

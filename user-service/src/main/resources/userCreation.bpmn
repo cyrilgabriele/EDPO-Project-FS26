@@ -25,7 +25,7 @@
                 <zeebe:ioMapping>
                     <zeebe:input source="simple" target="authentication.type" />
                     <zeebe:input source="camunda-noreply@1oannis.com" target="authentication.username" />
-                    <zeebe:input source="20,oraTeGrilEciANiaBole,-" target="authentication.password" />
+                    <zeebe:input source="password" target="authentication.password" />
                     <zeebe:input source="smtp" target="protocol" />
                     <zeebe:input source="mail.1oannis.com" target="data.smtpConfig.smtpHost" />
                     <zeebe:input source="=465" target="data.smtpConfig.smtpPort" />
