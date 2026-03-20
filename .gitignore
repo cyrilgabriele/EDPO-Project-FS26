@@ -37,3 +37,8 @@ hs_err_pid*
 # Environment files with secrets
 .env
 docker/.env
+
+# IDEs
+.vscode/
+.idea/
+
