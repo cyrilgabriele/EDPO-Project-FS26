@@ -18,7 +18,7 @@ spring:
   flyway:
     enabled: true
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:29092}
     consumer:
       group-id: portfolio-service-group
       auto-offset-reset: earliest
@@ -38,6 +38,8 @@ crypto:
     topic:
       price-raw: crypto.price.raw
       price-raw-dlt: crypto.price.raw.DLT
+      portfolio-compensation: crypto.portfolio.compensation
+      user-compensation: crypto.user.compensation
 
 management:
   endpoints:

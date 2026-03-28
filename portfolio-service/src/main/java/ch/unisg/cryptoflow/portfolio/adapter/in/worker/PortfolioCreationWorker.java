@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
@@ -16,32 +17,71 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class PortfolioCreationWorker {
 
+    private static final String PORTFOLIO_COMPENSATION_TRIGGER = "TRIGGER_PORTFOLIO_COMPENSATION";
+
     private final PortfolioService portfolioService;
 
     @JobWorker(type = "portfolioCreationWorker")
     public void createPortfolio(JobClient client, ActivatedJob job) {
         var variables = job.getVariablesAsMap();
-        Object userIdValue = variables.get("userId");
-        if (userIdValue == null) {
-            throw new IllegalStateException("userId variable missing for portfolio creation job " + job.getKey());
+        String userId = null;
+        String userName = null;
+        boolean portfolioCreated = false;
+        Long portfolioId = null;
+
+        try {
+            Object userIdValue = variables.get("userId");
+            if (userIdValue == null) {
+                throw new IllegalStateException("userId variable missing for portfolio creation job " + job.getKey());
+            }
+
+            Object userNameValue = variables.get("userName");
+            if (userNameValue == null) {
+                throw new IllegalStateException("userName variable missing for portfolio creation job " + job.getKey());
+            }
+
+            userId = userIdValue.toString();
+            userName = userNameValue.toString();
+
+            failIfCompensationTrigger(userName);
+            PortfolioCreationResult result = portfolioService.createPortfolioForUser(userId, userName);
+            portfolioCreated = result.created();
+            portfolioId = result.portfolioId();
+            log.info("Ensured portfolio {} for user {} (created={})", result.portfolioId(), userId, result.created());
+        } catch (IntentionalCompensationTriggerException ex) {
+            log.warn("Portfolio creation intentionally aborted for {} to test compensation", fallbackUserId(variables, userId));
+            portfolioCreated = false;
+        } catch (IllegalStateException ex) {
+            log.error("Portfolio creation failed for {} before persisting portfolio: {}", fallbackUserId(variables, userId), ex.getMessage());
+            portfolioCreated = false;
         }
 
-        Object userNameValue = variables.get("userName");
-        if (userNameValue == null) {
-            throw new IllegalStateException("userName variable missing for portfolio creation job " + job.getKey());
+        Map<String, Object> completionVars = new HashMap<>();
+        if (portfolioId != null) {
+            completionVars.put("portfolioId", portfolioId);
         }
-
-        String userId = userIdValue.toString();
-        String userName = userNameValue.toString();
-        PortfolioCreationResult result = portfolioService.createPortfolioForUser(userId, userName);
-        log.info("Ensured portfolio {} for user {} (created={})", result.portfolioId(), userId, result.created());
+        completionVars.put("portfolioCreated", portfolioCreated);
+        completionVars.put("isPortfolioCreated", portfolioCreated);
 
         client.newCompleteCommand(job.getKey())
-            .variables(Map.of(
-                "portfolioId", result.portfolioId(),
-                "portfolioCreated", result.created()
-            ))
+            .variables(completionVars)
             .send()
             .join();
     }
+
+    private void failIfCompensationTrigger(String userName) {
+        if (userName != null && PORTFOLIO_COMPENSATION_TRIGGER.equalsIgnoreCase(userName)) {
+            throw new IntentionalCompensationTriggerException();
+        }
+    }
+
+    private String fallbackUserId(Map<String, Object> variables, String resolvedUserId) {
+        if (resolvedUserId != null) {
+            return resolvedUserId;
+        }
+        Object userIdValue = variables.get("userId");
+        return userIdValue != null ? userIdValue.toString() : "<unknown-user>";
+    }
+
+    private static final class IntentionalCompensationTriggerException extends RuntimeException { }
 }

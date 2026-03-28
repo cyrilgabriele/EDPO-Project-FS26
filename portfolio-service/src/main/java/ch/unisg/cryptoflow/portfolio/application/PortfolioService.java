@@ -58,6 +58,16 @@ public class PortfolioService {
                 });
     }
 
+    public boolean deletePortfolioForUser(String userId) {
+        Objects.requireNonNull(userId, "userId must not be null");
+        return portfolioRepository.findByUserId(userId)
+                .map(entity -> {
+                    portfolioRepository.delete(entity);
+                    return true;
+                })
+                .orElse(false);
+    }
+
     private Optional<BigDecimal> sumHoldingValues(PortfolioEntity portfolio) {
         BigDecimal total = BigDecimal.ZERO;
         for (HoldingEntity holding : portfolio.getHoldings()) {

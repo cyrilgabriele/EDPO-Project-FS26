@@ -1,7 +1,7 @@
 package ch.unisg.cryptoflow.user.application.port.in;
 
-import ch.unisg.cryptoflow.user.domain.User;
+import ch.unisg.cryptoflow.user.application.UserCreationResult;
 
 public interface CreateUserUseCase {
-    User createUser(CreateUserCommand command);
+    UserCreationResult createUser(CreateUserCommand command);
 }
