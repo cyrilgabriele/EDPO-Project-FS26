@@ -1,10 +1,12 @@
 package ch.unisg.cryptoflow.portfolio.adapter.out.persistence;
 
 import jakarta.persistence.*;
+import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.List;
 
+@Getter
 @Entity
 @Table(name = "portfolio")
 public class PortfolioEntity {
@@ -16,21 +18,24 @@ public class PortfolioEntity {
     @Column(nullable = false, unique = true)
     private String userId;
 
+    @Column(name = "user_name")
+    private String userName;
+
     @OneToMany(mappedBy = "portfolio",
                cascade = CascadeType.ALL,
                orphanRemoval = true,
                fetch = FetchType.EAGER)
     private List<HoldingEntity> holdings = new ArrayList<>();
 
-    protected PortfolioEntity() {}
-
-    public PortfolioEntity(String userId) {
-        this.userId = userId;
+    protected PortfolioEntity() {
     }
 
-    public Long getId() { return id; }
+    public PortfolioEntity(String userId, String userName) {
+        this.userId = userId;
+        this.userName = userName;
+    }
 
-    public String getUserId() { return userId; }
-
-    public List<HoldingEntity> getHoldings() { return holdings; }
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
 }

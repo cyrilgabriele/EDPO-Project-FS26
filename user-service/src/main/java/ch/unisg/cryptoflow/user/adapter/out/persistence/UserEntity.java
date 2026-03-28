@@ -8,7 +8,8 @@ import jakarta.persistence.Table;
 import lombok.*;
 
 @Entity
-@Table(name = "users")
+// Dedicated table name to avoid the reserved postgres keyword `user`
+@Table(name = "cryptoflow_user")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -18,7 +19,7 @@ public class UserEntity {
     @Column(name = "user_id", nullable = false, updatable = false)
     private String userId;
 
-    @Column(name = "username", nullable = false)
+    @Column(name = "user_name", nullable = false)
     private String username;
 
     @Column(name = "password", nullable = false)

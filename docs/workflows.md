@@ -55,10 +55,15 @@ and timeouts can be added as a declarative boundary event.
 3. **Generate Confirmation Link** (service task) — generates a unique user ID and builds the
    confirmation URL and email body.
 4. **Send Confirmation Mail** (email connector) — sends the confirmation email to the user.
-5. **Wait for Confirmation** (intermediate message catch event) — the process suspends until
+5. **Confirmation Mail Sent Gateway** (event-based gateway) — starts a race between the
+   confirmation click and an expiry timer.
+6. **Wait for Confirmation** (intermediate message catch event) — the process suspends until
    the user clicks the confirmation link, which publishes a correlated message.
-6. **Create User** (service task) — persists the new user.
-7. **End event** — process completes.
+7. **Create User** (service task) — persists the new user.
+8. **Confirmation Link Expired** (timer catch event) — fires 45 seconds after the email is
+   sent (short for debugging), triggering the **Invalidate Confirmation Link** service task
+   that blocks the link inside the user service, after which the process terminates.
+9. **End event** — both paths terminate the process instance.
 
 ### Future improvements
 

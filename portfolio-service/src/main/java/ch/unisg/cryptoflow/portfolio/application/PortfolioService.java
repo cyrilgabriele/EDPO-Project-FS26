@@ -8,10 +8,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
-@Transactional(readOnly = true)
+@Transactional
 public class PortfolioService {
 
     private final PortfolioRepository portfolioRepository;
@@ -23,6 +24,7 @@ public class PortfolioService {
         this.localPriceCache = localPriceCache;
     }
 
+    @Transactional(readOnly = true)
     public Optional<PortfolioEntity> getPortfolio(String userId) {
         return portfolioRepository.findByUserId(userId);
     }
@@ -34,9 +36,36 @@ public class PortfolioService {
      *         price yet (the consumer is still warming up). Returns {@link Optional#empty()} also
      *         when the portfolio does not exist.
      */
+    @Transactional(readOnly = true)
     public Optional<BigDecimal> calculateTotalValue(String userId) {
         return portfolioRepository.findByUserId(userId)
                 .flatMap(this::sumHoldingValues);
+    }
+
+    public PortfolioCreationResult createPortfolioForUser(String userId, String userName) {
+        Objects.requireNonNull(userId, "userId must not be null");
+        Objects.requireNonNull(userName, "userName must not be null");
+        return portfolioRepository.findByUserId(userId)
+                .map(entity -> {
+                    if (entity.getUserName() == null) {
+                        entity.setUserName(userName);
+                    }
+                    return new PortfolioCreationResult(entity.getId(), false);
+                })
+                .orElseGet(() -> {
+                    PortfolioEntity created = portfolioRepository.save(new PortfolioEntity(userId, userName));
+                    return new PortfolioCreationResult(created.getId(), true);
+                });
+    }
+
+    public boolean deletePortfolioForUser(String userId) {
+        Objects.requireNonNull(userId, "userId must not be null");
+        return portfolioRepository.findByUserId(userId)
+                .map(entity -> {
+                    portfolioRepository.delete(entity);
+                    return true;
+                })
+                .orElse(false);
     }
 
     private Optional<BigDecimal> sumHoldingValues(PortfolioEntity portfolio) {

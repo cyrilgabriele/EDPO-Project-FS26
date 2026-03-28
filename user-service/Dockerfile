@@ -12,6 +12,7 @@ COPY market-data-service/pom.xml market-data-service/
 COPY portfolio-service/pom.xml portfolio-service/
 COPY transaction-service/pom.xml transaction-service/
 COPY user-service/pom.xml user-service/
+COPY onboarding-service/pom.xml onboarding-service/
 
 # Pre-download dependencies for faster rebuilds
 RUN mvn dependency:go-offline -pl user-service,shared-events -am -q

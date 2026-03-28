@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: onboarding-service
+
+server:
+  port: 8085
+
+camunda:
+  client:
+    mode: saas
+    auth:
+      client-id: ${CAMUNDA_CLIENT_ID_ONBOARDING_SERVICE}
+      client-secret: ${CAMUNDA_CLIENT_SECRET_ONBOARDING_SERVICE}
+    cluster-id: ${CAMUNDA_CLUSTER_ID_ONBOARDING_SERVICE}
+    region: ${CAMUNDA_REGION_ONBOARDING_SERVICE}

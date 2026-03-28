@@ -42,3 +42,5 @@ docker/.env
 .vscode/
 .idea/
 
+docs/lectures
+

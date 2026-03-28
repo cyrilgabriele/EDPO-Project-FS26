@@ -24,6 +24,7 @@
         <module>portfolio-service</module>
         <module>transaction-service</module>
         <module>user-service</module>
+        <module>onboarding-service</module>
     </modules>
 
     <properties>

@@ -1,0 +1,2 @@
+ALTER TABLE portfolio
+    ADD COLUMN IF NOT EXISTS user_name VARCHAR(255);

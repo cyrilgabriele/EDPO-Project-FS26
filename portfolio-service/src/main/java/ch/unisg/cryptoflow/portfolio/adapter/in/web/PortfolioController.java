@@ -69,6 +69,7 @@ public class PortfolioController {
                 .toList();
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("userId", portfolio.getUserId());
+        response.put("userName", portfolio.getUserName());
         response.put("holdings", holdings);
         return response;
     }

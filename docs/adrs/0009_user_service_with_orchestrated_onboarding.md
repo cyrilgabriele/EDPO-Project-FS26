@@ -22,7 +22,7 @@ Introduce `user-service` as the authoritative owner of the User aggregate. Regis
 implemented as a Camunda 8 BPMN process that collects credentials via a user form task,
 sends a confirmation email via the Camunda email connector, and suspends at an intermediate
 message catch event keyed by a pre-generated UUID. The User aggregate is written to PostgreSQL
-only after the `UserConfirmed` message is correlated — there is no intermediate persisted state.
+only after the `UserConfirmedEvent` message is correlated — there is no intermediate persisted state.
 
 ## Consequences
 

@@ -1,5 +1,6 @@
 package ch.unisg.cryptoflow.user.adapter.in.worker;
 
+import ch.unisg.cryptoflow.user.application.service.ConfirmationLinkService;
 import ch.unisg.cryptoflow.user.payload.UserCreationContext;
 import io.camunda.zeebe.client.api.response.ActivatedJob;
 import io.camunda.zeebe.client.api.worker.JobClient;
@@ -14,12 +15,18 @@ import java.util.UUID;
 
 @Slf4j
 @Component
-public class UserPreparationWorker {
+public class PrepareUserWorker {
 
     @Value("${user.confirmation.base-url:http://localhost:8084}")
     private String confirmationBaseUrl;
 
-    @JobWorker(type = "userPreparationWorker")
+    private final ConfirmationLinkService confirmationLinkService;
+
+    public PrepareUserWorker(ConfirmationLinkService confirmationLinkService) {
+        this.confirmationLinkService = confirmationLinkService;
+    }
+
+    @JobWorker(type = "prepareUserWorker")
     public void prepareUser(JobClient client, ActivatedJob job) {
         UserCreationContext context = UserCreationContext.fromMap(job.getVariablesAsMap());
 
@@ -30,6 +37,8 @@ public class UserPreparationWorker {
         Map<String, Object> updates = new HashMap<>();
         updates.put("userId", userId);
         updates.put("userCreationMailContent", mailContent);
+
+        confirmationLinkService.registerPendingLink(userId);
 
         log.info("Prepared user {} with email {} and confirmation link {}", context.userName(), context.email(), confirmationLink);
         client.newCompleteCommand(job.getKey())
