@@ -30,7 +30,7 @@ and `portfolioCreationWorker` (served by portfolio-service). The process joins a
 finish, fulfilling the Parallel Saga pattern highlighted in Lecture 5.
 
 Each domain service now only hosts its Zeebe workers and local persistence. The orchestrator
-simply publishes jobs and listens for `UserConfirmed` messages.
+simply publishes jobs and listens for `UserConfirmedEvent` messages.
 
 ## Consequences
 

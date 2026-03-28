@@ -72,13 +72,13 @@ public class UserConfirmationController {
             }
 
             zeebeClient.newPublishMessageCommand()
-                .messageName("UserConfirmed")
+                .messageName("UserConfirmedEvent")
                 .correlationKey(userId)
-                .variables(Map.of("UserId", userId, "mailConfirmed", true))
+                .variables(Map.of("userId", userId, "mailConfirmed", true))
                 .send()
                 .join();
 
-            log.info("Published UserConfirmed message for user {}", userId);
+            log.info("Published UserConfirmedEvent message for user {}", userId);
             return ResponseEntity.ok(Map.of(
                 "status", "confirmed",
                 "userId", userId,
