@@ -11,7 +11,7 @@ CryptoFlow is a distributed system comprising five Spring Boot microservices tha
   caption: [Platform-level service topology showing the five services, event contracts, external actors, and Camunda orchestration],
 ) <fig:system-overview>
 
-Figure @fig:system-overview gives the detailed runtime view that expands the brief overview from Chapter @project-description. It highlights the five deployable services, the shared event-contract module, the external Binance feed, and the two orchestration entry points that interact with Camunda.
+@fig:system-overview gives the detailed runtime view that expands the brief overview from  @project-description. It highlights the five deployable services, the shared event-contract module, the external Binance feed, and the two orchestration entry points that interact with Camunda.
 
 The services and their roles are:
 
@@ -25,13 +25,13 @@ The services and their roles are:
 
 / Onboarding Service (8085): Dedicated saga orchestrator that deploys `userOnboarding.bpmn` to Zeebe and coordinates the registration flow across the user and portfolio contexts. It owns no persistent business data because the workflow state itself lives in the Zeebe engine.
 
-The `shared-events` module shown in Figure @fig:system-overview is not a runtime service. It is a shared Maven module that defines the Kafka event contracts consumed and produced by the participating services, ensuring compile-time consistency across the codebase.
+The `shared-events` module shown in @fig:system-overview is not a runtime service. It is a shared Maven module that defines the Kafka event contracts consumed and produced by the participating services, ensuring compile-time consistency across the codebase.
 
 Supporting infrastructure includes a Kafka broker (KRaft mode), PostgreSQL 16, Kafka UI for monitoring, and pgAdmin for database administration, all provisioned via Docker Compose.
 
 == Kafka Topology
 
-All domain events flow through Kafka. Figure @fig:kafka-topology visualizes the current topology as implemented in the codebase, and Table @tab:kafka-topics summarizes the topic-level configuration.
+All domain events flow through Kafka. @fig:kafka-topology visualizes the current topology as implemented in the codebase, and @tab:kafka-topics summarizes the topic-level configuration.
 
 #figure(
   image("figures/kafka-topology-render.svg", width: 100%),
@@ -66,7 +66,7 @@ The producer/consumer relationships are:
   ),
 ) <tab:kafka-producers-consumers>
 
-Table @tab:kafka-topics captures the topic-level configuration, while Table @tab:kafka-producers-consumers shows which service publishes and consumes each stream. The onboarding service is intentionally absent because the current implementation coordinates via Zeebe rather than Kafka. Except for the compacted `user.confirmed` topic, all current topics inherit the broker's 1-hour development retention from Docker Compose. The partition key strategy is topic-specific: `crypto.price.raw` uses the trading symbol (e.g., `BTCUSDT`) with the deterministic `symbolIndex % numPartitions` mapping from ADR-0004; `transaction.order.approved` uses `transactionId`; `user.confirmed` and both compensation topics use `userId`; and the DLT preserves the failed record's original Kafka key.
+@tab:kafka-topics captures the topic-level configuration, while @tab:kafka-producers-consumers shows which service publishes and consumes each stream. The onboarding service is intentionally absent because the current implementation coordinates via Zeebe rather than Kafka. Except for the compacted `user.confirmed` topic, all current topics inherit the broker's 1-hour development retention from Docker Compose. The partition key strategy is topic-specific: `crypto.price.raw` uses the trading symbol (e.g., `BTCUSDT`) with the deterministic `symbolIndex % (modulo) numPartitions` mapping from ADR-0004; `transaction.order.approved` uses `transactionId`; `user.confirmed` and both compensation topics use `userId`; and the DLT preserves the failed record's original Kafka key.
 
 == BPMN Process Flows
 
@@ -92,7 +92,7 @@ The `userOnboarding.bpmn` process, deployed by the onboarding service, orchestra
   caption: [User onboarding BPMN process with parallel saga, confirmation wait, and compensation paths],
 ) <fig:onboarding-parallel-saga>
 
-Figure @fig:onboarding-parallel-saga visualizes the event-based confirmation wait, the parallel split into user and portfolio creation, and the modeled compensation branches for partial failure.
+@fig:onboarding-parallel-saga visualizes the event-based confirmation wait, the parallel split into user and portfolio creation, and the modeled compensation branches for partial failure.
 
 === Place Order Process
 
