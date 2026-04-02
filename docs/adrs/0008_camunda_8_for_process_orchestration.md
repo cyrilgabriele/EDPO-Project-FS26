@@ -10,18 +10,25 @@ complementary coordination channel for orchestrated process workflows.
 
 ## Context
 
-CryptoFlow needs long-running, multi-step workflows (order placement, user onboarding, future
-automated trading) that involve human interaction and react to Kafka price events. Pure
-choreography via Kafka lacks a process state authority, makes error compensation ad hoc, and
-requires custom tooling for visibility.
+CryptoFlow already contains two concrete orchestrated workflows: `userOnboarding` and
+`placeOrder`. In `userOnboarding`, Camunda 8's out-of-the-box outbound email connector sends
+the confirmation mail. In `placeOrder`, the same connector template is used for the order
+executed and order rejected notifications. The ADR is therefore not just a generic technology
+preference; it documents the engine that is already reflected in both BPMN models and in the
+surrounding worker and message-correlation implementation.
 
-**Camunda 7 / Operaton** embeds the engine in the application, stores process state in the
-application database, and requires custom client code for every Kafka or SMTP interaction.
-Horizontal scaling is possible but operationally complex.
+If CryptoFlow were taken beyond the course project into production, the system would need to
+scale for many concurrent onboarding and order instances reacting to Kafka price events. That
+would likely require cloud deployment anyway. The Zeebe architecture discussed in Lecture 6
+matches that direction and is also the basis for the consequences listed below: process state
+is managed in an external partitioned log, workers remain stateless gRPC clients, and Operate
+provides runtime visibility.
 
-**Camunda 8 / Zeebe** runs as an external partitioned log; job workers are stateless gRPC
-clients. Kafka and SMTP steps are connector templates in the BPMN model — no client code in
-the service. A managed SaaS cluster eliminates broker operations.
+Compared with **Camunda 7 / Operaton**, which embeds the engine in the application, stores
+process state in the application database, and would require more operational effort to scale,
+**Camunda 8 / Zeebe** is the more suitable fit for this project. Kafka and SMTP steps can stay
+in the BPMN model via connector templates instead of requiring separate application-level client
+code for these orchestration concerns.
 
 ## Decision
 

@@ -76,11 +76,11 @@ This chapter summarises the current architectural decision records (ADRs) refere
 
 *Status:* Accepted; partially supersedes ADR-0001 for orchestrated workflows.
 
-*Context:* Order placement and onboarding are long-running workflows with waits, branching, and failure handling. Pure Kafka choreography provides no central process-state authority and poor operational visibility.
+*Context:* CryptoFlow already implements two concrete orchestrated workflows, `userOnboarding` and `placeOrder`. Both BPMN models use Camunda 8's out-of-the-box outbound email connector for notifications, and a production-grade version of the system would need to scale many concurrent workflow instances in a cloud deployment. Pure Kafka choreography would not provide a central process-state authority or sufficient operational visibility.
 
-*Decision:* CryptoFlow standardises on Camunda 8 with Zeebe for process orchestration. BPMN models are deployed from the services, workers run as stateless gRPC clients, and Kafka continues to carry domain events while Zeebe manages orchestration state and correlations.
+*Decision:* CryptoFlow standardises on Camunda 8 with Zeebe for process orchestration. BPMN models are deployed from the services, workers run as stateless gRPC clients, and Kafka continues to carry domain events while Zeebe manages orchestration state and correlations. Kafka and email integration stay inside the BPMN models through Camunda connector templates rather than custom application-level client code.
 
-*Consequences:* The architecture gains executable BPMN models, scalable parallel workflow execution, and strong visibility through Camunda tooling. The trade-off is dependence on an external SaaS engine and a Zeebe-specific learning curve.
+*Consequences:* The architecture gains executable BPMN models, scalable parallel workflow execution through Zeebe's cloud-oriented design, connector-based notification steps, and strong runtime visibility through Camunda Operate. The trade-off is dependence on an external SaaS engine and a Zeebe-specific learning curve.
 
 == ADR-0009: User-Service as Owner of User Identity and Confirmation State <adr-0009>
 

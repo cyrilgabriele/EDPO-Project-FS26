@@ -2,7 +2,7 @@
 
 In preparing this report, we utilized the following writing aids to enhance the quality of our work:
 
-Table @tab:writing-aids-directory summarizes the tools used and the parts of the project they supported.
+@tab:writing-aids-directory summarizes the tools used and the parts of the project they supported.
 
 #figure(
   caption: "Directory of writing aids",
