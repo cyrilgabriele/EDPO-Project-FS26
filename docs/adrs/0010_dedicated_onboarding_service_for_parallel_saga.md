@@ -18,7 +18,7 @@ Keeping the BPMN inside `user-service` creates several issues:
 - The orchestrator now coordinates work owned by two separate services, increasing coupling.
 - user-service exposes UI forms and confirmation endpoints; tying workflow deployment to it
   complicates releases and violates hexagonal boundaries.
-- Additional saga branches (e.g., KYC, initial funding) are easier to grow in a dedicated context.
+- Additional saga branches (e.g., Know YOur Customer (KYC), initial funding) are easier to grow in a dedicated context.
 
 ## Decision
 

@@ -29,7 +29,7 @@ Log compaction ensures the read-model can be fully reconstructed from the topic 
 
 **Negative**
 - Brief eventual consistency window: a user confirmed milliseconds ago may not yet appear in the read-model if consumer lag is non-zero. Acceptable — a newly confirmed user is not expected to place an order immediately.
-- If user accounts can be deactivated, a compensating `UserDeactivatedEvent` is required to remove the row. Not yet implemented.
+- If user accounts can be deactivated, a compensating `UserDeactivatedEvent` is required to remove the row. Not yet implemented and declared as out of scope.
 
 ## Alternatives Considered
 

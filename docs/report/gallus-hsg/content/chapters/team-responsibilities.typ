@@ -1,6 +1,8 @@
 = Team Responsibilities <team-responsibilities>
 
-The project was developed by a two-person team over the course of the FS2026 semester. Both team members contributed to architectural design and system integration, while individual service ownership was divided by bounded context.
+The project was developed by a two-person team over the course of the FS2026 semester. Both team members contributed to architectural design and system integration, while individual service ownership was divided by bounded context. We paid attention that the contribution was 50/50 among both members.
+
+@tab:team-responsibilities summarizes the concrete ownership split and the major implementation responsibilities of each team member.
 
 #figure(
   caption: "Overview of team responsibilities and contributions",

@@ -9,6 +9,7 @@ import glob
 import os
 import re
 import sys
+import unicodedata
 
 import markdown
 from fpdf import FPDF
@@ -25,6 +26,7 @@ UNICODE_REPLACEMENTS = {
     "\u201d": '"',
     "\u2026": "...",
     "\u00a0": " ",
+    "\u2192": "->",
 }
 
 
@@ -60,7 +62,8 @@ def collect_adr_files():
 def sanitize(text):
     for char, replacement in UNICODE_REPLACEMENTS.items():
         text = text.replace(char, replacement)
-    return text
+    normalized = unicodedata.normalize("NFKD", text)
+    return normalized.encode("latin-1", "replace").decode("latin-1")
 
 
 def parse_table_row(raw):

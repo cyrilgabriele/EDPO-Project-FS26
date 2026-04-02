@@ -1,100 +1,66 @@
 # Activity Diagrams
 
-## 1. WebSocket Stream & Publishing Workflow (market-data-service)
+These diagrams show the current high-level business workflows in this branch. They intentionally avoid low-level transport, retry, and broker details.
+
+## 1. User Onboarding
 
 ```mermaid
 flowchart TD
-    A([Application starts]) --> B[Open WebSocket to Binance]
-    B --> C[Subscribe to configured symbol streams]
-    C --> D{Connection established?}
+    A([User starts onboarding]) --> B[Camunda starts the userOnboarding flow]
+    B --> C[Collect username, email, and password]
+    C --> D[user-service prepares the confirmation link]
+    D --> E[Send confirmation email]
+    E --> F{User confirms before the link expires?}
 
-    D -->|No| E{Max reconnect attempts?}
-    E -->|No| F[Wait exponential backoff]
-    F --> B
-    E -->|Yes| G[Log critical error, enter retry loop]
-    G --> H([Wait longer backoff, retry from start])
-    H --> B
+    F -->|No| G[user-service invalidates the confirmation link]
+    G --> H([Onboarding ends without an account])
 
-    D -->|Yes| I([Listening: await next ticker message])
+    F -->|Yes| I[user-service confirms the user and correlates Camunda]
+    I --> J[Run user creation and portfolio creation in parallel]
 
-    I --> J[Receive ticker update from Binance]
-    J --> K["PriceEventMapper.map(symbol, price)<br/>→ CryptoPriceUpdatedEvent(UUID, symbol, price, now)"]
-    K --> L["KafkaProducer.send(key=symbol, value=event)"]
-    L --> M{Kafka ack?}
+    J --> K[user-service creates the user]
+    J --> L[portfolio-service creates the portfolio]
 
-    M -->|Success| N[Log: Published event for SYMBOL → partition P offset O]
-    M -->|Failure| O[Log error, event lost]
+    K --> M{Both creation steps succeeded?}
+    L --> M
 
-    N --> I
-    O --> I
-
-    I --> P{Connection dropped?}
-    P -->|Yes| Q[Log warning: WebSocket disconnected]
-    Q --> B
-
-    style A fill:#e3f2fd,stroke:#1565c0
-    style I fill:#e3f2fd,stroke:#1565c0
-    style G fill:#ffebee,stroke:#c62828
-    style O fill:#ffebee,stroke:#c62828
-    style N fill:#e8f5e9,stroke:#2e7d32
+    M -->|Yes| N([Onboarding completed])
+    M -->|No| O[Trigger compensation through Kafka]
+    O --> P([Onboarding ends with rollback])
 ```
 
-## 2. Event Consumption & Error Handling Workflow (portfolio-service)
+## 2. Order Placement
 
 ```mermaid
 flowchart TD
-    A([Kafka delivers message batch]) --> B[Deserialise message]
-    B --> C{Deserialisation OK?}
+    A([User submits an order]) --> B[Camunda starts the placeOrder flow]
+    B --> C[transaction-service validates the order]
+    C --> D[Store the order as pending]
+    D --> E[Wait for a matching market price event]
+    E --> F{Price matched before timeout?}
 
-    C -->|No| D{Retry count < N?}
-    D -->|Yes| E[Retry deserialisation]
-    E --> C
-    D -->|No| F[DeadLetterPublishingRecoverer<br/>→ publish to crypto.price.raw.DLT]
-    F --> G[Log: Poison pill sent to DLT]
-    G --> M
+    F -->|No| G[Reject the order]
+    G --> H[Send rejection email]
+    H --> I([Order ends as not executed])
 
-    C -->|Yes| H[Extract CryptoPriceUpdatedEvent]
-    H --> I{eventId already processed?<br/>Idempotency check}
-
-    I -->|Yes, duplicate| J[Skip event, log duplicate]
-    J --> M
-
-    I -->|No, new event| K[LocalPriceCache.update<br/>symbol → price]
-    K --> L[Record eventId as processed]
-
-    L --> M{More messages in batch?}
-    M -->|Yes| B
-    M -->|No| N[Commit offsets to Kafka]
-    N --> O([Wait for next poll])
-
-    style A fill:#e3f2fd,stroke:#1565c0
-    style O fill:#e3f2fd,stroke:#1565c0
-    style F fill:#ffebee,stroke:#c62828
-    style G fill:#ffebee,stroke:#c62828
-    style J fill:#fff3e0,stroke:#ef6c00
-    style K fill:#e8f5e9,stroke:#2e7d32
+    F -->|Yes| J[Approve the order and persist the outbox entry]
+    J --> K[Publish `transaction.order.approved`]
+    K --> L[portfolio-service updates holdings]
+    L --> M[Send execution email]
+    M --> N([Order completed])
 ```
 
-## 3. Portfolio Valuation Query Workflow (portfolio-service REST)
+## 3. Portfolio Read and Valuation
 
 ```mermaid
 flowchart TD
-    A([Client: GET /portfolios/userId/value]) --> B[PortfolioController receives request]
-    B --> C[PortfolioService.getPortfolioValue]
-    C --> D[Load holdings from PostgreSQL via JPA]
-    D --> E{Holdings found?}
+    A([Client requests portfolio data]) --> B[portfolio-service loads the portfolio]
+    B --> C{Portfolio exists?}
 
-    E -->|No| F[Return 404 Not Found]
-    E -->|Yes| G[For each holding: read price from LocalPriceCache]
-
-    G --> H{All prices available in cache?}
-    H -->|No| I[Return 503: price data not yet available]
-    H -->|Yes| J["Calculate: sum(holding.qty × cachedPrice)"]
-
-    J --> K[Return 200 with total portfolio value]
-
-    style A fill:#e3f2fd,stroke:#1565c0
-    style F fill:#ffebee,stroke:#c62828
-    style I fill:#fff3e0,stroke:#ef6c00
-    style K fill:#e8f5e9,stroke:#2e7d32
+    C -->|No| D([Return not found])
+    C -->|Yes| E[Read current prices from the local cache]
+    E --> F{All required prices available?}
+    F -->|No| G([Return 503 while the cache is warming up])
+    F -->|Yes| H[Build the response and calculate valuations]
+    H --> I([Return the portfolio or valuation response])
 ```

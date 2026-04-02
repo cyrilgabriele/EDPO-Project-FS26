@@ -1,30 +1,31 @@
 = Project Description <project-description>
 
-CryptoFlow is a crypto portfolio simulation platform that demonstrates event-driven and process-oriented architecture patterns in a distributed microservice environment. The system allows users to register, manage cryptocurrency portfolios, and place simulated trading orders — all coordinated through asynchronous event streams and orchestrated business processes.
+CryptoFlow is a crypto portfolio simulation platform that demonstrates event-driven and process-oriented architecture patterns in a distributed microservice environment. The system allows users to register, manage cryptocurrency portfolios, and place simulated trading orders. This, all coordinated through asynchronous event streams and orchestrated business processes.
 
 == Domain and Goals
 
-The project targets the cryptocurrency trading domain, simulating a platform where users can track real-time prices and manage virtual portfolios. The primary goal is not to build a production trading system, but to serve as a vehicle for applying the architectural concepts covered in the EDPO course: event-driven communication, process orchestration, saga patterns, and compensation mechanisms.
+The central goal of this project was to implement the concepts covered in the EDPO lectures in a self-chosen project. For that purpose, CryptoFlow was designed as a high-level cryptocurrency platform in which users can register, observe live market prices, manage simulated portfolios, and place simulated trading orders. The platform is intentionally not a production exchange; it serves as a concrete case study for applying the architectural and integration concepts from the course in one coherent end-to-end system.
 
-The system addresses several concrete challenges:
-- Ingesting high-frequency market data from an external source and distributing it to downstream consumers without tight coupling.
-- Maintaining portfolio valuations that reflect current market prices without synchronous inter-service calls.
-- Orchestrating multi-step business processes (user onboarding, order placement) across service boundaries with well-defined failure handling.
-- Implementing compensating transactions when parts of a distributed workflow fail.
+The concepts implemented in CryptoFlow are:
+- *Event-driven communication* through Apache Kafka as the backbone for inter-service collaboration.
+- *Event-Carried State Transfer (ECST)* for price replication, portfolio updates, compensation events, and replicated user-validation data.
+- *Process orchestration* with Camunda 8 / Zeebe, using BPMN workflows to coordinate long-running processes.
+- *Service autonomy through bounded contexts* with clear ownership, a database-per-service model, and a dedicated onboarding-service to avoid a process monolith.
+- *Parallel Saga* for the onboarding workflow.
+- *Fairy Tale Saga* for the `placeOrder` workflow.
+- *Compensation mechanisms* for distributed onboarding failures.
+- *Transactional Outbox* for reliable publication of approved-order events.
+- *Idempotent consumer* handling for at-least-once event delivery in portfolio updates.
+- *Replicated read-model* for local validation without synchronous cross-service calls.
+- *Human intervention as a stateful resilience pattern* for deterministic workflow failures.
 
 == System Overview
 
-CryptoFlow consists of five Spring Boot microservices, an Apache Kafka cluster, a PostgreSQL database, and Camunda 8 (Zeebe) running as a managed SaaS platform:
+At a high level, CryptoFlow consists of five Spring Boot microservices, Apache Kafka for asynchronous communication, PostgreSQL for persistent service-owned state, Camunda 8 (Zeebe) for workflow orchestration, and Binance as the external market-data source.
 
-- *Market Data Service* (port 8081) subscribes to Binance WebSocket ticker streams for six cryptocurrency pairs (BTC, ETH, SOL, BNB, XRP, LTC against USDT) and publishes `CryptoPriceUpdatedEvent` records to the `crypto.price.raw` Kafka topic.
+Each service owns a bounded context: market-data ingestion, portfolio management, trading, user identity, or onboarding orchestration. Kafka transports the domain events between these contexts, while Zeebe coordinates the long-running onboarding and order-placement workflows without introducing direct service-to-service calls.
 
-- *Portfolio Service* (port 8082) consumes price events into a local in-memory cache (`ConcurrentHashMap`) and exposes REST endpoints for querying prices and calculating portfolio valuations. It also participates in the onboarding saga as a Camunda job worker that creates portfolio records.
-
-- *Transaction Service* (port 8083) handles order placement through a Camunda BPMN process. It consumes live price events, matches pending orders against market prices, and correlates execution results back to the orchestrating process.
-
-- *User Service* (port 8084) manages user accounts and participates in the onboarding saga. It generates email confirmation links, creates user records upon confirmation, and handles compensation (user deletion) when the saga fails.
-
-- *Onboarding Service* (port 8085) acts as the saga orchestrator. It deploys the `userOnboarding.bpmn` process to Zeebe and coordinates parallel user and portfolio creation, email confirmation, timeout handling, and compensation across the user and portfolio services.
+From the outside, the platform is defined by two main end-to-end flows. The onboarding flow creates a confirmed user together with a matching portfolio, and the trading flow matches pending orders against live market prices before propagating approved trades to the portfolio context. @architecture provides the detailed service-by-service architecture, event topology, and BPMN interaction model.
 
 == Technology Stack
 

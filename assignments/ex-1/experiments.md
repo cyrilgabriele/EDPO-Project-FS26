@@ -79,8 +79,9 @@ Received click-events - value: {eventID=78, ...} - partition: 0
 - Restart log shows "Resetting offset … offset=0" and the consumer replays from `eventID=0` in order.
 
 **Insights:**
-- Within the retention window, missing commits + `earliest` guarantee deterministic replay — ideal for at-least-once processing and disaster recovery.
-- Operationally, you must budget for the fact that a restart can take as long as processing the full backlog again.
+- If no committed offsets exist, `earliest` replays the oldest records Kafka still retains. This makes replay deterministic for the retained backlog, which is ideal for at-least-once processing and short-term recovery.
+- This guarantee does not cover the topic's full history forever: once Kafka's retention policy deletes older records, those messages can no longer be replayed.
+- Operationally, you must budget for the fact that a restart can take as long as processing the full retained backlog again.
 
 ### Experiment B — History Skipped with `auto.offset.reset=latest`
 

@@ -1,123 +1,203 @@
 = Architectural Decision Records <adrs>
 
-This chapter presents all architectural decision records (ADRs) produced during the project. ADRs follow the format proposed by Michael Nygard and document the context, decision, and consequences of each significant architectural choice.
+This chapter summarises the current architectural decision records (ADRs) referenced in the report. The authoritative ADR sources are maintained in `docs/adrs`; the summaries below condense their status, context, decision, and architectural impact.
 
-== ADR-0001: Kafka as Sole Inter-Service Communication <adr-0001>
+== ADR-0001: Kafka as Inter-Service Event Bus <adr-0001>
 
-*Status:* Accepted (partially superseded by ADR-0008 for orchestration)
+*Status:* Partially superseded by ADR-0008; Kafka remains the event bus for domain events.
 
-*Context:* CryptoFlow requires a communication mechanism between microservices that supports loose coupling, asynchronous processing, and durable event delivery. The market data service produces high-frequency price updates that multiple downstream services need to consume independently.
+*Context:* CryptoFlow services must exchange price updates and business events without direct runtime coupling. REST would make services block on each other, while RabbitMQ would not provide Kafka's replayable log and partitioned stream model.
 
-*Decision:* All inter-service domain events flow exclusively through Apache Kafka. No service makes synchronous REST or gRPC calls to another service for domain operations. Kafka runs in KRaft mode with auto topic creation disabled. The main price topic uses 3 partitions, 1-hour retention, and `acks=all` for durability. A dead letter topic (`crypto.price.raw.DLT`) with 7-day retention captures poison pills. Consumers use `auto.offset.reset=earliest` with manual offset management for at-least-once delivery.
+*Decision:* All inter-service domain events flow through Apache Kafka, while REST endpoints remain reserved for external clients. The platform uses a single-node KRaft broker, explicitly declared topics, manual offset handling, a dead-letter topic for poison pills, and `acks=all` for durable writes.
 
-*Consequences:* Services are fully decoupled at runtime — producers do not know their consumers. New consumers can be added without modifying existing services. The trade-off is eventual consistency and the operational overhead of managing a Kafka cluster. ADR-0008 later added Zeebe for orchestration state, while Kafka continues to carry domain events.
+*Consequences:* Services are loosely and temporally coupled, and failed records can be isolated without stalling whole consumers. The trade-off is eventual consistency, Kafka operations, and a short retention window that prevents Kafka from acting as the long-term system of record.
 
-== ADR-0002: Event-Carried State Transfer for Price Data <adr-0002>
+== ADR-0002: Event-Carried State Transfer for Price Replication <adr-0002>
 
 *Status:* Accepted
 
-*Context:* The portfolio service needs current prices to calculate portfolio valuations. Querying the market data service synchronously on every request would create tight coupling and a single point of failure.
+*Context:* `portfolio-service` needs current prices to value holdings. Calling `market-data-service` synchronously on each request would add latency and create an availability dependency.
 
-*Decision:* The portfolio service maintains a local in-memory price cache (`ConcurrentHashMap<String, BigDecimal>`) updated by a Kafka consumer. The `PriceEventConsumer` writes every received `CryptoPriceUpdatedEvent` into the `LocalPriceCache`. Portfolio valuation reads from this cache, never from the market data service.
+*Decision:* `portfolio-service` consumes `CryptoPriceUpdatedEvent` messages and maintains an in-memory price cache using Event-Carried State Transfer. Portfolio valuation always reads from this local cache.
 
-*Consequences:* The portfolio service remains available even when the market data service is offline — it serves slightly stale prices. The trade-off is eventual consistency: during producer downtime or consumer lag, cached prices may not reflect the latest market state. A 503 response is returned until the first price event arrives (warm-up period).
+*Consequences:* Valuations remain fast and available even if market-data publishing is temporarily interrupted. The trade-off is slightly stale data during lag or reconnection windows and a short warm-up phase after cold start.
 
 == ADR-0003: JSON Serialization for Kafka Messages <adr-0003>
 
 *Status:* Accepted
 
-*Context:* Kafka messages require a serialization format. Options include JSON, Avro with Schema Registry, and Protobuf.
+*Context:* Kafka messages require a shared serialization format. JSON, Avro, and Protocol Buffers differ in readability, schema enforcement, and operational overhead.
 
-*Decision:* Use Jackson `JsonSerializer` / `JsonDeserializer` for all Kafka messages. Event schemas are defined as Java records in the `shared-events` module. Type headers are disabled (`spring.json.add.type.headers=false`).
+*Decision:* CryptoFlow standardises on Jackson JSON serialization and deserialization, with event schemas defined as Java records in the `shared-events` module and type headers disabled.
 
-*Consequences:* JSON is human-readable and requires no additional infrastructure. The trade-off is larger message sizes compared to binary formats and no broker-side schema validation. Schema evolution relies on compile-time enforcement through the shared module. A migration path to Avro exists if throughput becomes a bottleneck.
+*Consequences:* Messages are easy to inspect and no schema registry is required. The trade-off is larger payloads and the absence of broker-side schema validation or automated compatibility guarantees.
 
 == ADR-0004: Trading Symbol as Kafka Partition Key <adr-0004>
 
 *Status:* Accepted
 
-*Context:* Kafka partitioning determines both parallelism and ordering guarantees. For price events, per-symbol ordering is critical to prevent stale prices from overwriting newer ones.
+*Context:* Price events must preserve per-symbol ordering so that newer prices cannot be overwritten by older ones. A poor keying strategy would distribute updates for one symbol across multiple partitions.
 
-*Decision:* The trading symbol (e.g., `BTCUSDT`) is used as the Kafka message key. A deterministic `symbolIndex % numPartitions` mapping distributes symbols evenly across partitions. With 6 symbols and 3 partitions, each partition receives exactly 2 symbols.
+*Decision:* The Kafka message key is the trading symbol, such as `BTCUSDT`. Partition assignment uses a deterministic symbol-index mapping before falling back to hash-based routing for unknown symbols.
 
-*Consequences:* All events for a given symbol land in the same partition, guaranteeing per-symbol ordering. The deterministic mapping ensures even distribution regardless of hash properties. The `eventId` (UUID) serves as the unique event identifier, while the message key is purely a routing key.
+*Consequences:* All updates for one symbol stay ordered within a single partition while load remains evenly distributed for the fixed symbol set. The message key becomes a routing key only; uniqueness remains the responsibility of the event ID.
 
-== ADR-0005: Monorepo with Shared Events Module <adr-0005>
+== ADR-0005: Shared Library Module for Event Schemas <adr-0005>
 
 *Status:* Accepted
 
-*Context:* Multiple services consume the same event types. Schema drift between producers and consumers could cause runtime deserialization failures.
+*Context:* Producers and consumers must agree on event schemas. Duplicating DTOs in every service would invite schema drift and runtime deserialization failures.
 
-*Decision:* All services live in a single Maven multi-module repository. Event records are defined once in the `shared-events` module and referenced as a compile-time dependency by all services.
+*Decision:* Event schemas live in a dedicated `shared-events` Maven module that is used as a compile-time dependency by every producing and consuming service. The module contains schema records and serialization dependencies only.
 
-*Consequences:* Schema changes are atomic — a single commit updates the event definition and all affected services. The trade-off is tight build-time coupling: any change to `shared-events` triggers a rebuild of all dependent services. For a two-person team this is acceptable; at larger scale, a schema registry approach might be preferred.
+*Consequences:* Schema changes become atomic and type-safe across the codebase. The cost is build-time coupling, because services depending on `shared-events` must be rebuilt when the shared contract changes.
 
 == ADR-0006: Binance WebSocket Streams for Market Data <adr-0006>
 
 *Status:* Accepted
 
-*Context:* The market data service needs a real-time source of cryptocurrency prices. Options include REST polling, WebSocket streaming, and third-party aggregators.
+*Context:* The platform needs a live market-data source. Polling a REST API would introduce artificial delay, while paid providers would add cost and operational overhead.
 
-*Decision:* Subscribe to Binance public WebSocket streams (`wss://stream.binance.com:9443/ws/<symbol>\@ticker`) for 24-hour ticker data. No API key is required for public streams.
+*Decision:* `market-data-service` subscribes to Binance public WebSocket streams at `wss://stream.binance.com:9443/ws/<symbol>\@ticker` and forwards price updates into Kafka.
 
-*Consequences:* The system receives sub-second push updates with zero cost and no rate-limit management. Automatic reconnection with exponential backoff handles transient disconnections. The trade-off is dependency on a single external provider and variable event rates determined by market activity.
+*Consequences:* The system receives sub-second push updates at zero cost and stays event-driven end-to-end. The trade-off is dependence on one upstream provider and the need to manage reconnects, heartbeats, and variable event rates.
 
-== ADR-0007: PostgreSQL with Flyway for Portfolio Persistence <adr-0007>
-
-*Status:* Accepted
-
-*Context:* The portfolio service needs durable storage for portfolios and holdings. The database schema must be version-controlled and reproducible across environments.
-
-*Decision:* Use PostgreSQL 16 as the persistence store. Flyway manages schema migrations with versioned SQL scripts. Hibernate runs in `validate` mode only. The portfolio service is the exclusive owner of its tables; no other service reads from or writes to them. Cross-service references use opaque string identifiers, not foreign keys.
-
-*Consequences:* Schema evolution is explicit, auditable, and reproducible. Validate-only mode prevents accidental schema changes at startup. Two tables are defined: `portfolio` (one row per user, `user_id UNIQUE`) and `holding` (one row per symbol per portfolio, `ON DELETE CASCADE`).
-
-== ADR-0008: Camunda 8 (Zeebe) for Process Orchestration <adr-0008>
-
-*Status:* Accepted (partially supersedes ADR-0001)
-
-*Context:* Order placement and user onboarding require multi-step workflows spanning multiple services, with timeout handling, conditional branching, and compensation. Pure Kafka choreography would make these flows difficult to reason about and monitor.
-
-*Decision:* Adopt Camunda 8 with the Zeebe engine for BPMN process orchestration. Zeebe operates as a managed SaaS platform. Services deploy BPMN models via the `@Deployment` annotation and participate as stateless gRPC job workers. Kafka continues to carry domain events; Zeebe handles orchestration state.
-
-*Consequences:* Business processes are visually modeled in BPMN and executable. Camunda Operate provides runtime visibility into process instances. The trade-off is dependency on an external SaaS platform and the learning curve of BPMN modeling. The clear separation — Kafka for events, Zeebe for orchestration — keeps each technology in its strength area.
-
-== ADR-0009: User Service with Orchestrated Onboarding <adr-0009>
+== ADR-0007: Portfolio-Service as Sole Data Owner of the Portfolio Bounded Context <adr-0007>
 
 *Status:* Accepted
 
-*Context:* User registration requires multiple steps: credential collection, email confirmation, and persistent storage. The confirmation step introduces a waiting period that does not fit a synchronous request/response model.
+*Context:* Portfolio holdings are stateful domain data with their own invariants. Sharing database access across services would blur ownership and make schema evolution risky.
 
-*Decision:* The user service owns the `User` aggregate. Registration is modeled as a Camunda BPMN process: collect credentials, send a confirmation email, wait for the user to click the link (message correlation), then persist the user record. No intermediate registration state is stored in the database — pending registrations exist only as Zeebe process instances.
+*Decision:* `portfolio-service` is the exclusive owner of portfolio persistence. It uses PostgreSQL 16, manages schema changes through Flyway, keeps Hibernate in `validate` mode, and accepts cross-service interaction only through events and opaque identifiers.
 
-*Consequences:* The process state is managed by Zeebe, eliminating the need for a custom state machine in application code. Message correlation handles the asynchronous confirmation cleanly. Pending registrations are not queryable from the user service's database — only confirmed users are persisted.
+*Consequences:* Portfolio schema evolution becomes explicit, auditable, and local to one service. The trade-off is that other services cannot join against portfolio tables and must instead rely on asynchronous integration patterns.
 
-== ADR-0010: Dedicated Onboarding Service as Saga Orchestrator <adr-0010>
+== ADR-0008: Camunda 8 (Zeebe) as the Process Orchestration Engine <adr-0008>
+
+*Status:* Accepted; partially supersedes ADR-0001 for orchestrated workflows.
+
+*Context:* CryptoFlow already implements two concrete orchestrated workflows, `userOnboarding` and `placeOrder`. Both BPMN models use Camunda 8's out-of-the-box outbound email connector for notifications, and a production-grade version of the system would need to scale many concurrent workflow instances in a cloud deployment. Pure Kafka choreography would not provide a central process-state authority or sufficient operational visibility.
+
+*Decision:* CryptoFlow standardises on Camunda 8 with Zeebe for process orchestration. BPMN models are deployed from the services, workers run as stateless gRPC clients, and Kafka continues to carry domain events while Zeebe manages orchestration state and correlations. Kafka and email integration stay inside the BPMN models through Camunda connector templates rather than custom application-level client code.
+
+*Consequences:* The architecture gains executable BPMN models, scalable parallel workflow execution through Zeebe's cloud-oriented design, connector-based notification steps, and strong runtime visibility through Camunda Operate. The trade-off is dependence on an external SaaS engine and a Zeebe-specific learning curve.
+
+== ADR-0009: User-Service as Owner of User Identity and Confirmation State <adr-0009>
+
+*Status:* Accepted; amended by ADR-0010.
+
+*Context:* Several services depend on a verified user identity, but the system needed one service to own user lifecycle and email confirmation semantics. After ADR-0010 moved orchestration into `onboarding-service`, that ownership question still remained.
+
+*Decision:* `user-service` becomes the authoritative owner of the `User` aggregate and confirmation lifecycle. It prepares and persists pending confirmation links, exposes the public confirmation endpoint, correlates `UserConfirmed` back into Camunda, publishes `user.confirmed`, and persists the user record only after confirmation.
+
+*Consequences:* Identity ownership and confirmation rules are centralised in one bounded context, and every persisted user is guaranteed to be confirmed. The trade-off is additional persistence and operational surface inside `user-service`, plus the need for an externally reachable confirmation URL.
+
+== ADR-0010: Dedicated Onboarding-Service as Saga Orchestrator <adr-0010>
 
 *Status:* Accepted
 
-*Context:* Registration evolved to require both user creation and portfolio creation — a distributed transaction across two bounded contexts. Placing the orchestration logic in either participating service would create undesirable coupling.
+*Context:* Registration evolved into a distributed workflow: after confirmation, both user creation and portfolio creation must complete across separate bounded contexts. Keeping that saga inside `user-service` would create unnecessary coupling.
 
-*Decision:* Introduce a dedicated `onboarding-service` that owns the `userOnboarding.bpmn` process and acts as the saga orchestrator. The process coordinates workers across two services: `prepareUserWorker` and `userCreationWorker` in user-service, `portfolioCreationWorker` in portfolio-service. User and portfolio creation execute in parallel via a BPMN parallel gateway. A boundary timer invalidates unconfirmed links after 1 minute.
+*Decision:* A dedicated `onboarding-service` owns `userOnboarding.bpmn` and orchestrates the onboarding saga. It coordinates `prepareUserWorker`, waits for the user-confirmed message, fans out to `userCreationWorker` and `portfolioCreationWorker` in parallel, and uses a boundary timer to invalidate stale confirmation links.
 
-*Consequences:* The orchestration concern is isolated in its own service, keeping user-service and portfolio-service focused on their domains. The parallel saga pattern enables concurrent creation across contexts. The trade-off is an additional service to deploy, though it is lightweight (no persistent storage).
+*Consequences:* Orchestration is isolated from domain ownership, and the onboarding flow now models the Parallel Saga pattern explicitly. The trade-off is an additional deployable unit with its own Camunda credentials, deployment lifecycle, and monitoring needs.
 
 == ADR-0011: Event-Carried Compensation for Onboarding Failures <adr-0011>
 
 *Status:* Accepted
 
-*Context:* In the onboarding saga, either user or portfolio creation can fail after the sibling has succeeded, leaving an orphaned entity. Compensation must work across service boundaries without synchronous coupling.
+*Context:* In the onboarding saga, either local creation step can fail after the sibling service already succeeded. Compensation must therefore cross service boundaries without introducing synchronous coupling.
 
-*Decision:* Cross-service compensation flows through Kafka events. When user creation fails after portfolio creation succeeded, the compensation worker deletes the user and publishes a `PortfolioCompensationRequestedEvent`. When portfolio creation fails after user creation succeeded, the compensation worker deletes the portfolio and publishes a `UserCompensationRequestedEvent`. Both services also listen to the opposite compensation topic for defense in depth. Producers use synchronous `kafkaTemplate.send(...).get()` to guarantee persistence before acknowledging.
+*Decision:* Compensation is carried through Kafka events. The service that detects failure deletes its own state and publishes a compensation request so the sibling service can clean up; both sides also listen defensively to the opposite compensation topic.
 
-*Consequences:* Compensation is loosely coupled — no direct HTTP calls during failure handling. Deletions are idempotent (keyed by `userId`), making at-least-once delivery safe. The dual-listener pattern provides a safety net even if the orchestrator crashes. The trade-off is increased complexity in the event flow.
+*Consequences:* Compensation remains loosely coupled and safe under at-least-once delivery because deletions are idempotent. The trade-off is a more complex failure flow and additional event choreography to understand and monitor.
 
 == ADR-0012: Flag-Driven Completion for Creation Tasks <adr-0012>
 
 *Status:* Accepted
 
-*Context:* Zeebe error handling (throwing `BpmnError`) would short-circuit the BPMN flow, potentially bypassing compensation branches. If a worker throws an error, the process might terminate before reaching the gateway that routes to compensation.
+*Context:* Throwing BPMN errors directly from creation workers could terminate the onboarding process before compensation branches become reachable. The saga needed a way to represent failure without short-circuiting the BPMN control flow.
 
-*Decision:* Both `userCreationWorker` and `portfolioCreationWorker` always complete their jobs successfully, regardless of the actual outcome. They communicate results exclusively through boolean process variables (`isUserCreated`, `isPortfolioCreated`). BPMN exclusive gateways inspect these flags: `true` routes to success, `false` routes to compensation.
+*Decision:* `userCreationWorker` and `portfolioCreationWorker` always complete their Zeebe jobs and communicate outcomes through boolean process variables such as `isUserCreated` and `isPortfolioCreated`. Exclusive gateways then route toward success or compensation.
 
-*Consequences:* The BPMN process always reaches its decision gateways, ensuring compensation logic is reachable for all failure modes — duplicates, validation errors, and transient connectivity issues alike. No Zeebe incidents need manual resolution. The trade-off is that errors are less visible in Camunda Operate (jobs appear successful), requiring operators to check service logs and compensation event trails.
+*Consequences:* Compensation paths remain reachable for every failure mode, including validation and duplicate cases. The trade-off is reduced failure visibility in Camunda Operate because technically the jobs complete successfully.
+
+== ADR-0013: Fairy Tale Saga (seo) for the `placeOrder` Workflow <adr-0013>
+
+*Status:* Accepted
+
+*Context:* The `placeOrder` process contains an Event-Based Gateway that may wait for a price match for an arbitrary amount of time. Cross-service consistency with portfolio updates is required, but local ACID transactions must remain service-local.
+
+*Decision:* The workflow adopts the Fairy Tale Saga (seo) pattern: synchronous Zeebe service tasks for local transactions and eventual cross-service consistency through Kafka. Deterministic business failures are handled via BPMN error boundaries rather than saga-wide compensation.
+
+*Consequences:* Zeebe can suspend the workflow at the price-match wait without holding open database or network resources, and each service keeps its own transaction boundary. The trade-off is an accepted eventual-consistency window after order approval and no compensation once an order is semantically terminal.
+
+== ADR-0014: Outbox Pattern for Order Approval <adr-0014>
+
+*Status:* Accepted
+
+*Context:* Approving an order requires both persisting `APPROVED` in the transaction database and publishing `OrderApprovedEvent` to Kafka. A crash between those two steps would otherwise create silent data loss.
+
+*Decision:* `transaction-service` uses the Transactional Outbox pattern. The approval step writes the status change and outbox payload in one local transaction, a publication step sends the event to Kafka, and a scheduled safety net republishes stale unpublished rows after crashes.
+
+*Consequences:* Approval state and event publication become atomically durable, and broker outages no longer create unrecoverable gaps. The trade-off is an extra table, a background scheduler, and the need for downstream consumers to tolerate at-least-once delivery.
+
+== ADR-0015: Portfolio Update Durability for Approved Orders <adr-0015>
+
+*Status:* Accepted
+
+*Context:* After the outbox event is published, the workflow must decide whether to wait for a portfolio acknowledgement before sending the executed email. Waiting would tighten coupling between `transaction-service` and `portfolio-service`.
+
+*Decision:* The executed email is sent immediately after `publishOrderApprovedWorker` completes. Portfolio propagation remains pure Event-Carried State Transfer: `portfolio-service` consumes `OrderApprovedEvent` autonomously and no acknowledgement flows back into the BPMN process.
+
+*Consequences:* Approval workflows finish promptly, email latency stays deterministic, and `portfolio-service` owns its own retry and DLT logic. The trade-off is that portfolio failures are no longer visible in Camunda Operate and users may briefly see approved orders before holdings catch up.
+
+== ADR-0016: Idempotent Consumer for Portfolio Updates <adr-0016>
+
+*Status:* Accepted
+
+*Context:* Kafka delivers messages at least once. If `portfolio-service` crashes after updating holdings but before committing the consumer offset, replaying the same `OrderApprovedEvent` would otherwise double the holding quantity.
+
+*Decision:* `portfolio-service` inserts the `transactionId` into a `processed_transaction` table with a `UNIQUE` constraint inside the same transaction as the holding update. Duplicate inserts fail fast and cause the event to be skipped safely.
+
+*Consequences:* Re-delivered approval events no longer corrupt holdings, and the processed table doubles as an audit log. The trade-off is one extra database write per update and unbounded table growth unless retention is added later.
+
+== ADR-0017: Replicated Read-Model for User Validation at Order Placement <adr-0017>
+
+*Status:* Accepted
+
+*Context:* `transaction-service` must reject orders from users who have not completed registration. Synchronous validation against `user-service` would block order placement on another service's availability.
+
+*Decision:* `transaction-service` maintains its own confirmed-users read model in a local database table. `user-service` publishes `UserConfirmedEvent` to a log-compacted Kafka topic, and `transaction-service` consumes the event and upserts the local projection.
+
+*Consequences:* User validation becomes a local database read and remains available even if `user-service` is down. The trade-off is a small eventual-consistency window and the future need for compensating events if users can later be deactivated.
+
+== ADR-0018: Human Escalation for Deterministic Workflow Failures <adr-0018>
+
+*Status:* Accepted
+
+*Context:* Some approval-flow failures are deterministic, such as a missing transaction record or a missing outbox row. Retrying these cases indefinitely would not fix the root cause and would only delay operator visibility.
+
+*Decision:* Workers throw typed BPMN errors for these failures, and interrupting boundary events route the process into an operations user task in Camunda Tasklist. The task carries the relevant order context and requires a resolution note before closure.
+
+*Consequences:* Deterministic integrity problems surface immediately in Tasklist with an audit trail, and the process instance stays open until acknowledged. The trade-off is additional operational monitoring and no automatic retry path from the human-escalation step.
+
+== ADR-0019: Database per Service for Stateful Bounded Contexts <adr-0019>
+
+*Status:* Accepted
+
+*Context:* CryptoFlow now contains several stateful bounded contexts: user identity, portfolio management, and trading. Sharing one database across them would couple schema evolution, transactions, deployments, and failure domains.
+
+*Decision:* Every stateful bounded context gets its own database: `user-service` owns `user_service_db`, `portfolio-service` owns `portfolio_service_db`, and `transaction-service` owns `transaction_service_db`. Services must not read or write each other's tables; cross-service consistency is handled through events, replicated read models, outbox publication, and sagas.
+
+*Consequences:* Structural coupling is reduced and each stateful service becomes a more independent architecture quantum. The trade-off is that cross-service joins and ACID transactions disappear, which makes eventual consistency and the supporting integration patterns a permanent architectural requirement.
+
+== ADR-0020: Transaction-Service as Sole Owner of the Trading Bounded Context <adr-0020>
+
+*Status:* Accepted
+
+*Context:* Order placement, pending-order matching, approval or rejection, and reliable publication of approved trades all belong to one coherent trading domain. That domain needed a single service boundary rather than being split across portfolio, user, and onboarding concerns.
+
+*Decision:* `transaction-service` is the sole owner of the trading bounded context. It owns `placeOrder.bpmn`, the Camunda workers, transaction lifecycle state, pending-order matching, publication of approved-order events, and local persistence such as `transaction_record`, `outbox_events`, and the confirmed-user validation read model.
+
+*Consequences:* Trading invariants and behaviour are concentrated in one service boundary, while `portfolio-service` stays a downstream projection owner and `user-service` remains the identity owner. The trade-off is another deployable service with its own persistence model, but the responsibilities stay aligned with the domain.

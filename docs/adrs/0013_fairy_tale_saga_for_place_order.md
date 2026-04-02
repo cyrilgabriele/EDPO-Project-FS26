@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-The `placeOrder` workflow contains an Event-Based Gateway that waits for an external price-match signal of **non-deterministic duration** — the wait may last seconds or never terminate. Each service task owns its own local ACID transaction. Cross-service state (portfolio holdings) must eventually be consistent with the transaction record.
+The `placeOrder` workflow contains an Event-Based Gateway that waits for an external price-match signal of **non-deterministic duration**. This means that the wait may last seconds or never terminate. Each service task owns its own local ACID transaction. Cross-service state (portfolio holdings) must eventually be consistent with the transaction record.
 
 The saga pattern choice determines how failures are handled and how tightly `transaction-service` and `portfolio-service` are coupled.
 

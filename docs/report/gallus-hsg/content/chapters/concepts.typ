@@ -1,107 +1,75 @@
 = Lecture Concepts <lecture-concepts>
 
-This chapter maps the architectural patterns and concepts covered in the EDPO lectures to their concrete implementations in CryptoFlow. Each section defines the concept and describes how the project applies it, referencing specific services, classes, and configuration where relevant.
+This chapter follows the sequence in which the relevant concepts appeared in the EDPO lectures: Kafka and event-driven communication in Lecture 1 and 2, process orchestration and service boundaries in Lecture 3 and 4, and transactional saga and resilience patterns in Lecture 5. For each concept listed in Section 1.1, it explains briefly and precisely how CryptoFlow applies it and which ADRs capture the underlying decision.
 
-== Event-Driven Architecture
+== Event-Driven Communication through Apache Kafka
 
-Event-Driven Architecture (EDA) is a design paradigm in which the flow of the system is determined by events — significant changes in state that are published to interested consumers. Producers and consumers are decoupled: the producer does not know who will consume the event, and the consumer does not know who produced it.
+Lecture 1 introduced Kafka as the technical backbone for distributed event streams, and Lecture 2 framed event-driven systems as communication through published facts instead of remote commands. CryptoFlow adopts this as its default integration style. ADR-0001 defines Kafka as the sole inter-service communication channel for domain behavior, which means that the services do not call each other synchronously through REST or RPC.
 
-CryptoFlow is built entirely on this principle. All inter-service communication flows through Apache Kafka topics. No service makes synchronous REST or RPC calls to another service for domain operations. The `market-data-service` publishes `CryptoPriceUpdatedEvent` records without any awareness of downstream consumers. The `portfolio-service`, `transaction-service`, and any future services subscribe independently. This architecture is codified in ADR-0001, which mandates Kafka as the sole inter-service event bus.
-
-== Event Notification
-
-The Event Notification pattern is the simplest form of event-driven communication: a service emits a notification that something happened, and consumers react independently. The event carries enough information to identify what occurred.
-
-In CryptoFlow, the `market-data-service` implements this pattern. Each `CryptoPriceUpdatedEvent` carries an `eventId`, `symbol`, `price`, and `timestamp` — a self-contained notification of a price change. The producer has no knowledge of who consumes these events or what they do with them. New consumers can subscribe to the `crypto.price.raw` topic without any change to the producing service.
+In practice, `market-data-service` publishes `CryptoPriceUpdatedEvent` records to `crypto.price.raw`, `user-service` publishes `UserConfirmedEvent` records for downstream consumers, `transaction-service` publishes approved-order events for portfolio propagation, and the onboarding rollback path uses dedicated compensation topics. ADR-0003 standardizes JSON serialization for all Kafka messages, ADR-0004 preserves per-symbol ordering through the Kafka key, and ADR-0005 keeps all event contracts in the shared `shared-events` module.
 
 == Event-Carried State Transfer
 
-Event-Carried State Transfer (ECST) extends event notification by including enough state in the event for consumers to maintain their own local copies of data, eliminating the need for synchronous queries back to the source.
+Lecture 2 presented Event-Carried State Transfer (ECST) as the pattern in which an event carries enough state for consumers to maintain their own local view instead of querying the source service. CryptoFlow applies ECST in four places.
 
-The `portfolio-service` implements ECST through its `LocalPriceCache` — a `ConcurrentHashMap<String, BigDecimal>` updated by the `PriceEventConsumer` on every received `CryptoPriceUpdatedEvent`. When the REST API receives a request for portfolio valuation, `PortfolioService.calculateTotalValue()` reads prices directly from this local cache without calling the `market-data-service`. The service continues to serve queries even when the producer is offline, trading freshness for availability. This pattern is documented in ADR-0002.
+First, ADR-0002 replicates market prices from `market-data-service` into the `portfolio-service` price cache, so portfolio valuation reads the locally maintained state instead of calling the producer. Second, ADR-0015 keeps portfolio updates autonomous: after an order is approved, `transaction-service` publishes `OrderApprovedEvent`, and `portfolio-service` updates holdings independently. Third, ADR-0011 uses event-carried compensation requests so user and portfolio data can be deleted across service boundaries without synchronous rollback calls. Fourth, ADR-0017 uses the same principle for user validation: `transaction-service` maintains a local confirmed-user projection from `UserConfirmedEvent` messages and validates new orders locally.
 
-== Apache Kafka as Event Bus
+== Process Orchestration with Camunda 8 with Zeebe
 
-Apache Kafka is a distributed event streaming platform that provides durable, ordered, and partitioned message delivery. It decouples producers from consumers through topics, allowing independent scaling and evolution of each side.
+Lectures 3 and 4 introduced workflow engines, BPMN, durable waiting states, and message correlation. CryptoFlow implements these ideas with Camunda 8 / Zeebe, as formalized in ADR-0008.
 
-CryptoFlow uses Kafka in KRaft mode (no ZooKeeper) as the backbone for all domain event communication. Key configuration decisions include:
-- *Topic `crypto.price.raw`*: 3 partitions, 1-hour retention, producer `acks=all` for durability (ADR-0001).
-- *Dead letter topic `crypto.price.raw.DLT`*: 1 partition, 7-day retention for poison pills.
-- *Deterministic partition key strategy*: the trading symbol (e.g., `BTCUSDT`) is used as the message key with a custom `symbolIndex % numPartitions` mapping that guarantees per-symbol ordering (ADR-0004).
-- *JSON serialization* with Jackson, type headers disabled (ADR-0003).
-- *Consumer groups*: `portfolio-service-group`, `transaction-service-group`, and `user-service-compensation`, each with `auto.offset.reset=earliest` and manual offset management.
+Two BPMN processes are central. `onboarding-service` deploys `userOnboarding.bpmn`, which coordinates user preparation, email confirmation, timeout handling, and the post-confirmation creation steps. `transaction-service` deploys `placeOrder.bpmn`, which coordinates order submission, price-match waiting, timeout handling, and the final notification path. In both cases, Zeebe owns the process state, timers, and correlation logic, while the services participate through stateless job workers. This avoids custom workflow state tables and allows long-running waits without blocking threads or database transactions.
 
-The Kafka experiments conducted in Exercise 1 (see @results) validate these configuration choices by demonstrating the consequences of weaker settings.
+== Service Autonomy through Bounded Contexts
 
-== BPMN and Process Orchestration with Camunda 8
+Lecture 4 emphasized that workflow ownership must not collapse service boundaries into a process monolith. CryptoFlow applies this through explicit bounded contexts and a database-per-service model.
 
-Business Process Model and Notation (BPMN) is a graphical standard for specifying business processes. Camunda 8, built on the Zeebe workflow engine, executes BPMN models as distributed process instances. Services participate as stateless job workers connected via gRPC.
+The system is split into five contexts: Market-Data, Portfolio, Trading, User, and Onboarding. ADR-0019 establishes one database per stateful service, while ADR-0007 and ADR-0020 specify the ownership of the portfolio and trading contexts in detail. Cross-service references are opaque identifiers rather than foreign keys or shared tables, and services depend on Kafka events or local projections rather than direct SQL access.
 
-CryptoFlow uses two BPMN processes:
+The most important architectural consequence is ADR-0010: onboarding orchestration moved into a dedicated `onboarding-service`. This keeps the cross-context registration flow in one explicit process owner while preserving the autonomy of `user-service` and `portfolio-service`, each of which still owns its own data and local transaction boundary.
 
-+ *`userOnboarding.bpmn`* (deployed by `onboarding-service`): Orchestrates user registration as a multi-step saga including credential collection, confirmation email dispatch, timeout handling, parallel user and portfolio creation, and compensation on failure. The process uses parallel gateways, event-based gateways, timer events, message correlation, and compensation boundary events.
+== Saga Patterns
 
-+ *`placeOrder.bpmn`* (deployed by `transaction-service`): Manages order placement with a user task for order entry, a service task for order processing, and an event-based gateway that waits for either a price match message or a 1-minute timeout, followed by email notification.
+Lecture 5 introduced multiple transactional saga variants. CryptoFlow implements two different orchestrated saga styles because onboarding and order execution have different coupling and consistency requirements.
 
-The adoption of Camunda 8 is documented in ADR-0008.
+=== Parallel Saga
 
-== Saga Pattern
+ADR-0010 explains the decisions for the implementation of the onboarding service (`userOnboarding.bpmn`) as a Parallel Saga. After the confirmation message arrives, `userOnboarding.bpmn` reaches a parallel gateway and starts `userCreationWorker` in `user-service` and `portfolioCreationWorker` in `portfolio-service` concurrently. Each worker performs only its own local transaction in its own bounded context. The saga proceeds only if both branches report success. Otherwise the flow moves into compensation for both branches. See @compensation-mechanisms for full detail. 
 
-The Saga pattern decomposes a long-lived distributed transaction into a sequence of local transactions, each with a corresponding compensating action that undoes its effects if a later step fails. This avoids distributed locks while maintaining eventual consistency.
+This fits the lecture pattern well: communication between participants is asynchronous, consistency is eventual, and coordination remains centralized in one orchestrator. CryptoFlow chose this style because onboarding spans multiple services, includes a e-mail confirmation wait, and must remain visible as one end-to-end process.
 
-The user onboarding flow implements an orchestrated saga. The `userOnboarding.bpmn` process coordinates three workers across two services:
-+ `prepareUserWorker` generates a user ID and confirmation link.
-+ `userCreationWorker` creates the user record (local transaction in `user-service`).
-+ `portfolioCreationWorker` creates the portfolio record (local transaction in `portfolio-service`).
+=== Fairy Tale Saga
 
-If either creation step fails — indicated by boolean flags `isUserCreated` / `isPortfolioCreated` — the BPMN process routes to compensation handlers that delete the successfully created entity and publish cross-service compensation events via Kafka. This design is detailed in ADR-0010, ADR-0011, and ADR-0012.
+ADR-0013 explains the decisions for the implementation of the place order process (`placeOrder.bpmn`) as a Fairy Tale Saga. The process keeps synchronous service-task interactions inside the trading context, but it accepts eventual consistency at the boundary to the portfolio context. Zeebe can wait at the event-based gateway for either a price match or a timeout without holding a distributed lock or an open database transaction.
 
-== Orchestration vs. Choreography
+Once the order is approved in `transaction-service`, that trading decision is terminal in its bounded context. The downstream portfolio update is deliberately not folded into the same atomic step. Instead, the order is approved locally and then propagated asynchronously, which is exactly the trade-off of the Fairy Tale Saga used in the lecture.
 
-In orchestration, a central coordinator directs participants through a defined sequence. In choreography, participants react to events independently without a central controller.
+== Compensation Mechanisms <compensation-mechanisms>
 
-CryptoFlow uses both patterns deliberately:
+Compensation is required in CryptoFlow where the business invariant is all-or-nothing: after onboarding, the system should not keep only a user or only a portfolio. ADR-0011 therefore models rollback as explicit forward recovery rather than as a distributed transaction.
 
-- *Orchestration*: The `onboarding-service` orchestrates user registration through a Camunda BPMN process. A central process definition controls the flow, including parallel execution, timeouts, and compensation. This provides full visibility into process state via Camunda Operate and ensures deterministic failure handling.
+If one onboarding branch succeeds and the other fails, the BPMN process routes to compensation handlers that delete the already created entity and publish a compensation request for the peer service. `UserCompensationRequestedEvent` and `PortfolioCompensationRequestedEvent` carry the data needed for the remote delete, and the receiving services treat the delete operation idempotently so at-least-once delivery remains safe. ADR-0012 complements this design: `userCreationWorker` and `portfolioCreationWorker` always complete their Zeebe jobs and report the outcome via `isUserCreated` and `isPortfolioCreated`, ensuring that the BPMN gateways can always reach the modeled compensation paths.
 
-- *Choreography*: The market data distribution is purely choreographed. The `market-data-service` publishes price events, and consumers (`portfolio-service`, `transaction-service`) react independently. There is no central coordinator — each consumer decides how to process the events.
+== Transactional Outbox
 
-The choice of orchestration for onboarding (ADR-0010) was driven by the complexity of the parallel saga with compensation. The simpler price distribution flow remains choreographed.
+Lecture 5 discussed the need to solve inconsistent dual writes. CryptoFlow addresses this with the Transactional Outbox pattern in ADR-0014.
 
-== Compensation and Rollback
+When an order is approved, `approveOrderWorker` stores both the `APPROVED` status and an outbox row in the same local database transaction of `transaction-service`. `publishOrderApprovedWorker` then publishes the pending outbox entry to Kafka and marks it as published. If the service crashes after the database commit but before publication, the scheduler republishes stale unpublished rows. This guarantees that an approved order does not silently miss the event that must later update the portfolio.
 
-Compensation is the mechanism by which a saga undoes the effects of a previously committed local transaction. Unlike database rollback, compensation is a forward action — it executes new operations that logically reverse earlier ones.
+== Idempotent Consumer
 
-CryptoFlow implements compensation through two mechanisms:
+Lecture 5 also stressed that retries and redelivery are safe only if consumers are idempotent. CryptoFlow implements this in ADR-0016 for `portfolio-service`.
 
-+ *Camunda compensation boundary events*: The BPMN process attaches compensation handlers to the user and portfolio creation tasks. When a sibling task fails, the process throws a compensation event that triggers deletion of the successfully created entity.
+Before applying an `OrderApprovedEvent`, the service inserts the `transactionId` into the `processed_transaction` table under a unique constraint. If the insert succeeds, the holding update is executed in the same transaction. If the insert violates the constraint, the event has already been processed and is ignored. This protects the portfolio from duplicated Kafka deliveries after crashes, restarts, or rebalancing.
 
-+ *Kafka-based cross-service compensation* (ADR-0011): `UserCompensationRequestedEvent` and `PortfolioCompensationRequestedEvent` flow through dedicated Kafka topics (`crypto.user.compensation`, `crypto.portfolio.compensation`). Both services listen for compensation events targeting their domain. Deletions are idempotent (keyed by `userId`) and use synchronous `kafkaTemplate.send(...).get()` to ensure the compensation event is persisted before acknowledging.
+== Replicated Read-Model
 
-The flag-driven completion pattern (ADR-0012) ensures that Zeebe job workers always complete successfully, communicating outcomes through boolean variables rather than throwing errors. This guarantees that the BPMN process always reaches its compensation branches.
+The lecture material on read models and CQRS motivated a local projection for autonomous validation. CryptoFlow applies that idea in ADR-0017.
 
-== Bounded Contexts
+`transaction-service` keeps its own table of confirmed users instead of calling `user-service` during order placement. `user-service` publishes `UserConfirmedEvent` records to a log-compacted topic, and `transaction-service` upserts the confirmation state into its local database. Order validation is therefore a local read. This is a focused, pragmatic use of a replicated read-model: the write model remains in `user-service`, while the trading context keeps only the projection it needs.
 
-Bounded Contexts, from Domain-Driven Design, define explicit boundaries within which a particular domain model applies. Each context has its own ubiquitous language, data model, and rules.
+== Human Intervention as a Stateful Resilience Pattern
 
-CryptoFlow identifies five bounded contexts:
+Lecture 5 presented human intervention as a stateful resilience pattern for deterministic failures that should not be retried forever. CryptoFlow uses exactly this pattern in ADR-0018 for the `placeOrder` workflow.
 
-+ *Market Data* — owned by `market-data-service`. Responsible for ingesting external price feeds and publishing normalized price events.
-+ *Portfolio Management* — owned by `portfolio-service`. Manages portfolios, holdings, and price caching. Exclusive owner of the `portfolio` and `holding` database tables.
-+ *Trading* — owned by `transaction-service`. Handles order placement and price matching.
-+ *User & Identity* — owned by `user-service`. Manages user accounts, confirmation links, and credentials.
-+ *Onboarding* — owned by `onboarding-service`. Orchestrates the cross-context registration saga without owning persistent data.
-
-Each service owns its data exclusively. Cross-service references use opaque string identifiers (e.g., `userId` as a UUID), never foreign keys. The `shared-events` module defines the event contracts between contexts (ADR-0005).
-
-== Hexagonal Architecture
-
-Hexagonal Architecture (Ports and Adapters) separates the application core from external concerns by defining ports at the boundary and adapters that implement the technical details of communication with the outside world.
-
-All five CryptoFlow services follow this pattern. The package structure consistently separates:
-- `adapter/in/` — inbound adapters (Kafka listeners, REST controllers, Camunda job workers)
-- `adapter/out/` — outbound adapters (Kafka producers, JPA repositories)
-- `application/` — application services containing business logic
-- `domain/` — domain objects with no framework dependencies
-
-For example, the `portfolio-service` has `PriceEventConsumer` as an inbound Kafka adapter, `PortfolioController` as an inbound web adapter, and `PortfolioRepository` as an outbound persistence adapter. The `PortfolioService` application layer depends only on domain objects and port interfaces, not on Kafka or JPA directly.
+If the approval step cannot find the expected transaction record, or if the publication step cannot find the expected outbox row, the worker throws a typed BPMN error. Boundary events route the instance to an operations user task in Camunda Tasklist, where the relevant order context is visible and the operator must document the resolution. This keeps the process instance open, auditable, and operationally visible instead of turning a known data-integrity problem into endless retries or a silent failure.

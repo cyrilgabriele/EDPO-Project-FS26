@@ -1,38 +1,48 @@
-# 9. Introduce a dedicated user-service with Camunda-orchestrated onboarding
+# 9. Introduce a dedicated user-service as owner of user identity and confirmation state
 
 Date: 2026-03-15
 
 ## Status
 
-Accepted
+Accepted. Amended by [ADR-0010](0010_dedicated_onboarding_service_for_parallel_saga.md)
 
 ## Context
 
 Portfolio and transaction services operate on behalf of identifiable users. No service currently
-owns the User aggregate or provides a verified identity as a first-class domain concept.
+owns the User aggregate or the confirmation lifecycle as a first-class domain concept.
 
-User registration is a multi-step stateful workflow: credential collection, email dispatch, and
-account activation triggered by an external browser request. The unbounded wait between dispatch
-and activation, combined with the need for timeout and compensation handling, makes this a
-direct fit for Camunda 8 process orchestration (ADR-0008) rather than imperative application code.
+Registration is a multi-step workflow with an unbounded wait between email dispatch and browser
+confirmation. After [ADR-0010](0010_dedicated_onboarding_service_for_parallel_saga.md), the BPMN
+orchestration itself lives in `onboarding-service`, but the user-related state, confirmation
+semantics, and user lifecycle still belong in `user-service`.
 
 ## Decision
 
-Introduce `user-service` as the authoritative owner of the User aggregate. Registration is
-implemented as a Camunda 8 BPMN process that collects credentials via a user form task,
-sends a confirmation email via the Camunda email connector, and suspends at an intermediate
-message catch event keyed by a pre-generated UUID. The User aggregate is written to PostgreSQL
-only after the `UserConfirmedEvent` message is correlated — there is no intermediate persisted state.
+Introduce `user-service` as the authoritative owner of the User aggregate and the confirmation
+lifecycle.
+
+- `onboarding-service` owns and deploys the onboarding BPMN process (ADR-0010); `user-service`
+  participates via Zeebe workers and the public confirmation endpoint.
+- `prepareUserWorker` generates the `userId`, builds the confirmation link, and persists a
+  `user_confirmation_links` row as `PENDING` before the confirmation email is sent.
+- `GET /user/confirm/{userId}` is handled by `user-service`. On successful confirmation it marks
+  the link `CONFIRMED`, correlates `UserConfirmedEvent` back to Camunda, and publishes
+  `user.confirmed` to Kafka.
+- The `cryptoflow_user` row is persisted only after confirmation, via `userCreationWorker`.
+  Pending confirmation state is stored in `user-service`; the User aggregate itself is not created
+  before confirmation.
 
 ## Consequences
 
-- **Authoritative identity source:** User management logic is owned exclusively by `user-service`;
-  portfolio and transaction services reference its aggregates without duplicating identity concerns.
-- **Verified identity invariant:** Every record in the `users` table has a confirmed email
-  address. No downstream status check is required.
-- **Process state in Zeebe:** Pending registrations live as Zeebe process instances, not database
-  rows. Timeout and incident handling is managed via Camunda Operate, not application code.
+- **Authoritative identity boundary:** `user-service` owns user records, confirmation links,
+  and user lifecycle rules.
+- **Verified-user invariant:** Every persisted user has completed email confirmation;
+  unconfirmed registrations exist only as confirmation-link state plus orchestration state.
+- **Clear split of concerns:** `onboarding-service` owns workflow orchestration, while
+  `user-service` owns domain data and user-facing confirmation semantics.
 - **Public endpoint required:** `USER_CONFIRMATION_BASE_URL` must be set to an externally
   accessible address in every deployment environment.
+- **Additional persistence:** Pending registrations are now visible in `user-service` through
+  `user_confirmation_links`; they no longer live exclusively inside Zeebe.
 - **Additional operational surface:** `user-service` introduces its own database schema,
-  worker process, and deployment lifecycle.
+  workers, and deployment lifecycle.

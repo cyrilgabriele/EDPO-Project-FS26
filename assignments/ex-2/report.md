@@ -35,8 +35,43 @@ The service follows hexagonal (ports & adapters) architecture:
 - Producer uses `acks=all` and the trading symbol (e.g. `BTCUSDT`) as the message key, guaranteeing per-symbol partition affinity and ordering
 - Symbols subscribed: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `BNBUSDT`, `XRPUSDT` (configurable); price updates arrive in real time via Binance WebSocket streams
 
+**Why two topics?**
+
+- `crypto.price.raw` is the business topic. `market-data-service` publishes valid `CryptoPriceUpdatedEvent` messages there, and downstream services consume that live market stream.
+- `crypto.price.raw.DLT` is the operational dead-letter topic. `portfolio-service` does not read it during normal processing; its `DefaultErrorHandler` moves a record there only when a message from `crypto.price.raw` still fails after the configured retries.
+- In other words, `crypto.price.raw` carries the domain event flow, while `crypto.price.raw.DLT` isolates poison messages for inspection instead of blocking the main consumer.
+
 **EDA pattern demonstrated – Event Notification:**
-The producer emits a `CryptoPriceUpdatedEvent` per symbol on every cycle with no knowledge of, or dependency on, any consumer. New consumers can subscribe to `crypto.price.raw` without any change to this service.
+The producer emits a `CryptoPriceUpdatedEvent` whenever Binance pushes a new ticker update, with no knowledge of, or dependency on, any consumer. This is a good fit for our scenario because `market-data-service` is the boundary that observes external market changes, while other services only need to react to those changes. The producer therefore should not call `portfolio-service` directly or know how prices are later used.
+
+In the current implementation, the concrete consumer is `portfolio-service`: its `PriceEventConsumer` listens on `crypto.price.raw` and updates `LocalPriceCache`. REST requests are then served from that local replica. This keeps the producer reusable: additional consumers such as alerting, analytics, or auditing services could subscribe later without changing `market-data-service`.
+
+**Event flow (current implementation):**
+
+```text
+Binance WebSocket
+    |
+    | ticker update {symbol, price}
+    v
+market-data-service
+  BinanceWebSocketClient
+    -> PriceEventMapper
+    -> CryptoPriceKafkaProducer
+    |
+    | publish CryptoPriceUpdatedEvent
+    v
+Kafka topic: crypto.price.raw
+    |
+    | consumed by @KafkaListener
+    v
+portfolio-service
+  PriceEventConsumer
+    -> LocalPriceCache
+    |
+    | GET /prices/* or GET /portfolios/{userId}
+    v
+REST response from local replicated state
+```
 
 ---
 

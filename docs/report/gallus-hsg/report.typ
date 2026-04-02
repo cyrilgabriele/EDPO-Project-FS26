@@ -16,8 +16,6 @@
   // acknowledgement: include "./content/acknowledgement.typ",
   writing-aids-directory: include "./content/writing-aids-directory.typ",
   // appendix: include "./content/appendix.typ",
-  bibliography-as-bytes: read("./bibliography.bib", encoding: none),
-  bibliography-style: "apa",
 )
 
 #include "./content/chapters/project-description.typ"

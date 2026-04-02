@@ -1,272 +1,216 @@
-# CryptoFlow – Event-driven Crypto Portfolio Platform
+# CryptoFlow - Event-driven Crypto Portfolio Platform
 
-> [!NOTE]
-> Copyright 2026 - present [Cyril Gabriele](mailto:cyril.gabriele@student.unisg.ch), [Ioannis Theodosiadis](mailto:ioannis.theodosiadis@student.unisg.ch), University of St. Gallen
+> Course: Event-driven and Process-oriented Architectures (EDPO), FS2026
 >
-> Course: **Event-driven and Process-oriented Architectures (EDPO), FS2026** – Exercise 2
-
----
+> Copyright 2026 - present [Cyril Gabriele](mailto:cyril.gabriele@student.unisg.ch), [Ioannis Theodosiadis](mailto:ioannis.theodosiadis@student.unisg.ch), University of St. Gallen
 
 ## What is CryptoFlow?
 
-CryptoFlow is a crypto portfolio simulation platform built to demonstrate event-driven architecture patterns using Apache Kafka and Spring Boot. Two microservices communicate **exclusively via Kafka** – there is no REST call between them:
+CryptoFlow is a multi-service crypto portfolio simulation platform built around Apache Kafka, Spring Boot, PostgreSQL, and Camunda 8.
 
-- **`market-data-service`** subscribes to Binance WebSocket streams and publishes real-time price events per symbol to Kafka.
-- **`portfolio-service`** consumes those events and maintains a local price replica, which it uses to answer portfolio valuation queries via its own REST API.
+This branch is no longer just the original market-data/portfolio demo. The current system includes:
 
-```
-  Binance WebSocket API
-        │  wss://stream.binance.com:9443/ws/<symbol>@ticker
-        ▼
-┌──────────────────────┐         Topic: crypto.price.raw          ┌──────────────────────┐
-│  market-data-service │ ────────────────────────────────────────▶│  portfolio-service   │
-│  (Producer)          │   CryptoPriceUpdatedEvent per symbol     │  (Consumer + REST)   │
-│  port 8081           │                                          │  port 8082           │
-└──────────────────────┘                                          └──────────────────────┘
-```
+- live market-data ingestion from Binance
+- a portfolio read model backed by event-carried state transfer
+- a user-onboarding workflow with confirmation and compensation
+- an order workflow with price matching, timeout handling, and Kafka publication through an outbox
+- shared event contracts in a Maven monorepo
 
----
+## Current modules
+
+| Module | Port | Responsibility |
+|---|---:|---|
+| `shared-events` | - | Shared Kafka event records used across services |
+| `market-data-service` | `8081` | Consumes Binance ticker streams and publishes `crypto.price.raw` |
+| `portfolio-service` | `8082` | Maintains the local price cache, exposes read APIs, creates/deletes portfolios for onboarding, consumes approved orders |
+| `transaction-service` | `8083` | Deploys `placeOrder.bpmn`, validates and matches orders, stores transaction state, publishes `transaction.order.approved` |
+| `user-service` | `8084` | Stores users and confirmation links, exposes `GET /user/confirm/{userId}`, publishes `user.confirmed`, handles compensation |
+| `onboarding-service` | `8085` | Deploys `userOnboarding.bpmn` to Camunda 8 |
+
+## Architecture at a glance
+
+See the current system diagram in [`docs/diagrams/context-map.md`](docs/diagrams/context-map.md).
 
 ## Prerequisites
 
 | Tool | Version |
-|------|---------|
-| Java | 21 (JDK) |
+|---|---|
+| Java | 21 |
 | Maven | 3.9+ |
-| Docker + Docker Compose | any recent version |
+| Docker / Docker Compose | any recent version |
+| Camunda 8 | required for the onboarding and order workflows |
 
----
+The workflow-aware services expect service-specific Camunda environment variables. Check these files for the exact variable names:
 
-## Getting Started
+- `onboarding-service/src/main/resources/application.yml`
+- `portfolio-service/src/main/resources/application.yml`
+- `transaction-service/src/main/resources/application.yaml`
+- `user-service/src/main/resources/application.yml`
 
-### Option A – Run everything in Docker (recommended)
+The onboarding BPMN currently uses a Camunda email connector. To run that flow unchanged, the referenced SMTP secret must exist in your Camunda environment, or the BPMN connector configuration must be adapted.
+
+## Getting started
+
+### Option A - Docker stack for Kafka, Postgres, and the containerized services
 
 ```bash
-# 1. Clone and enter the repo
-git clone <repo-url>
-cd EDPO-Project-HS26
-
-# 2. Start the full stack (infrastructure + both services)
 cd docker
-docker compose up -d
-
-# 3. Check that all containers are healthy
+docker compose up -d --build
 docker compose ps
 ```
 
-All seven containers start in dependency order:
-`zookeeper` → `kafka` → `kafka-ui` + `postgres` → `pgadmin` + `market-data-service` → `portfolio-service`
+After exporting the required Camunda variables for the workflow-aware services, this starts:
 
-### Option B – Infrastructure in Docker, services locally
+- Kafka in KRaft mode on `localhost:9092` (no ZooKeeper in this branch)
+- Kafka UI on `http://localhost:8080`
+- PostgreSQL on `localhost:5432`
+- pgAdmin on `http://localhost:5050`
+- `market-data-service` on `http://localhost:8081`
+- `portfolio-service` on `http://localhost:8082`
+- `transaction-service` on `http://localhost:8083`
+- `user-service` on `http://localhost:8084`
+
+The compose stack creates three per-service databases on first startup:
+
+- `user_service_db`
+- `portfolio_service_db`
+- `transaction_service_db`
+
+`onboarding-service` is present in this branch but is not part of `docker/docker-compose.yml`, so run it locally when you want the onboarding workflow deployed:
 
 ```bash
-# Start only the infrastructure
+mvn spring-boot:run -pl onboarding-service
+```
+
+### Option B - Infrastructure in Docker, services locally
+
+Start the local infrastructure:
+
+```bash
 cd docker
-docker compose up -d zookeeper kafka kafka-ui postgres
+docker compose up -d kafka kafka-ui postgres pgadmin
+```
 
-# In one terminal – start the producer
-cd ..
+Then, from the repository root, start the services you need.
+
+`market-data-service` works with its local defaults:
+
+```bash
 mvn spring-boot:run -pl market-data-service
+```
 
-# In another terminal – start the consumer
+`portfolio-service` needs the Camunda variables in your shell plus Kafka pointed at the host broker when run outside Docker:
+
+```bash
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092 \
 mvn spring-boot:run -pl portfolio-service
 ```
 
-Both services connect to `localhost:9092` (Kafka) and `localhost:5432` (Postgres) by default.
-
----
-
-## How the Market Data Service Works (Producer)
-
-### Binance WebSocket stream
-
-On startup, `BinanceWebSocketClient` opens a persistent WebSocket connection to Binance and subscribes to ticker streams for the configured symbols:
-
-```
-wss://stream.binance.com:9443/ws/btcusdt@ticker/ethusdt@ticker/solusdt@ticker/bnbusdt@ticker/xrpusdt@ticker
-```
-
-This is a **public endpoint** – no API key needed. Binance pushes ticker updates in real time:
-
-```json
-{
-  "e": "24hrTicker",
-  "s": "BTCUSDT",
-  "c": "95241.32",
-  ...
-}
-```
-
-### Event production
-
-For each incoming ticker message, `PriceEventMapper` wraps it in a `CryptoPriceUpdatedEvent` (a Java record with a fresh UUID `eventId`, symbol, price, and timestamp) and `CryptoPriceKafkaProducer` sends it to Kafka:
-
-- **Topic:** `crypto.price.raw` (3 partitions)
-- **Message key:** the symbol string (e.g. `BTCUSDT`) — this guarantees all events for one symbol always land on the **same partition**, preserving per-symbol ordering.
-- **Serialisation:** JSON (Jackson)
-
-The event rate is determined by Binance (market activity), not a fixed schedule — events arrive in real time.
-
-### Failure handling
-
-If the WebSocket connection drops, `BinanceWebSocketClient` automatically reconnects with exponential backoff. During the disconnection window, no events are published — consumers continue serving queries from their cached state (ECST).
-
----
-
-## How the Portfolio Service Works (Consumer)
-
-### Kafka consumption (ECST pattern)
-
-`PriceEventConsumer` is annotated with `@KafkaListener` and belongs to consumer group `portfolio-service-group`. Every time a `CryptoPriceUpdatedEvent` arrives on `crypto.price.raw`, it updates `LocalPriceCache` — a `ConcurrentHashMap<String, BigDecimal>` in memory.
-
-This implements **Event-carried State Transfer**: the portfolio service **never** calls market-data-service directly. It maintains its own local price replica and can answer queries even while market-data-service is offline.
-
-### REST query API
-
-The cached prices power three endpoints:
-
-| Endpoint | Description |
-|---|---|
-| `GET /prices` | All currently cached symbol → price pairs |
-| `GET /prices/{symbol}` | Latest price for one symbol (503 if not yet received) |
-| `GET /portfolios/{userId}` | Portfolio holdings with current valuations |
-| `GET /portfolios/{userId}/value` | Total portfolio value in USDT |
-
----
-
-## Verifying the Event Flow
-
-### 1. Kafka UI (easiest)
-
-Open **http://localhost:8080** in your browser.
-
-- **Topics** tab → click `crypto.price.raw` → **Messages** tab
-- You will see new messages arriving in real time as Binance pushes ticker updates
-- Each message shows: key = symbol (e.g. `BTCUSDT`), value = JSON event, partition, offset
-
-### 2. market-data-service logs
+`transaction-service` needs Camunda variables in your shell plus the local Postgres/Kafka endpoints:
 
 ```bash
-# Docker
-docker compose logs -f market-data-service
-
-# Local
-mvn spring-boot:run -pl market-data-service
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092 \
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/transaction_service_db \
+mvn spring-boot:run -pl transaction-service
 ```
 
-Look for lines like:
-```
-Published price event for BTCUSDT → partition=1 offset=42
-Published price event for ETHUSDT → partition=0 offset=41
-```
-(These are at `DEBUG` level — set `logging.level.ch.unisg.cryptoflow=DEBUG` in application.yml to see them, or they appear by default if run in dev mode.)
-
-### 3. portfolio-service logs
+`user-service` needs Camunda variables in your shell plus host-local database and confirmation URL settings:
 
 ```bash
-docker compose logs -f portfolio-service
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092 \
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/user_service_db \
+USER_CONFIRMATION_BASE_URL=http://localhost:8084 \
+mvn spring-boot:run -pl user-service
 ```
 
-Look for:
-```
-Consumed price event: eventId=... symbol=BTCUSDT price=95241.32
-```
-
-### 4. portfolio-service REST API
-
-After a few seconds of runtime, prices are cached and you can query them:
+`onboarding-service` only deploys the onboarding BPMN, so it just needs the Camunda variables:
 
 ```bash
-# All cached prices
-curl http://localhost:8082/prices
-
-# Single symbol
-curl http://localhost:8082/prices/BTCUSDT
-
-# Example response:
-# {"symbol":"BTCUSDT","price":95241.32}
+mvn spring-boot:run -pl onboarding-service
 ```
 
----
+## Current workflows
 
-## Kafka Topics
+### 1. User onboarding saga
 
-| Topic | Partitions | Retention | Purpose |
+- `onboarding-service` deploys `userOnboarding.bpmn`.
+- Camunda starts the process and sends a job to `user-service` to prepare a confirmation link.
+- `user-service` stores the pending link and exposes confirmation through `GET /user/confirm/{userId}`.
+- When the link is opened, `user-service` both correlates `UserConfirmedEvent` back to Camunda and publishes `user.confirmed` to Kafka.
+- Camunda then runs user creation and portfolio creation in parallel through `user-service` and `portfolio-service`.
+- If one branch fails, compensation is requested asynchronously through `crypto.portfolio.compensation` or `crypto.user.compensation`.
+
+### 2. Place-order saga
+
+- `transaction-service` deploys `placeOrder.bpmn`.
+- A Camunda form collects `userId`, `symbol`, `amount`, and target `price`.
+- `transaction-service` validates the order against its local replicated read model of confirmed users, fed by the compacted `user.confirmed` topic.
+- Incoming `crypto.price.raw` events are matched against in-memory pending orders.
+- On a price match, `transaction-service` approves the order, stores an outbox row, and publishes `transaction.order.approved`.
+- `portfolio-service` consumes `transaction.order.approved` and idempotently upserts the holding, updating weighted-average purchase price where needed.
+- If no match arrives before the BPMN timer expires, the order is rejected.
+- A scheduled recovery job republishes orphaned unpublished outbox rows older than five minutes.
+
+### 3. Read-side portfolio queries
+
+- `portfolio-service` consumes `crypto.price.raw` and maintains a local `LocalPriceCache`.
+- Portfolio valuation reads never call `market-data-service` synchronously.
+- `GET /portfolios/{userId}/value` returns `503` until all required prices are present in the local cache.
+
+## Kafka topics in use
+
+| Topic | Producer | Consumer(s) | Notes |
 |---|---|---|---|
-| `crypto.price.raw` | 3 | 1 h (default) | Live price ticks from Binance |
-| `crypto.price.raw.DLT` | 1 | 7 d | Dead letter topic for poison pills |
+| `crypto.price.raw` | `market-data-service` | `portfolio-service`, `transaction-service` | 3 partitions, live Binance price updates |
+| `crypto.price.raw.DLT` | dead-letter handling for price events | none in this branch | 1 partition |
+| `user.confirmed` | `user-service` | `transaction-service` | compacted topic for the confirmed-user read model |
+| `transaction.order.approved` | `transaction-service` | `portfolio-service` | 3 partitions |
+| `crypto.portfolio.compensation` | `user-service` | `portfolio-service` | onboarding rollback from user side |
+| `crypto.user.compensation` | `portfolio-service` | `user-service` | onboarding rollback from portfolio side |
 
----
+## HTTP surfaces and local tools
 
-## Configuration Reference
-
-### market-data-service (`application.yml`)
-
-| Property | Default | Env var override |
+| Surface | URL / endpoint | Purpose |
 |---|---|---|
-| `binance.stream-url` | `wss://stream.binance.com:9443/ws` | `BINANCE_STREAM_URL` |
-| `binance.symbols` | `BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT` | — |
-| `spring.kafka.bootstrap-servers` | `localhost:9092` | `KAFKA_BOOTSTRAP_SERVERS` |
+| Kafka UI | `http://localhost:8080` | Inspect topics and messages |
+| pgAdmin | `http://localhost:5050` | Inspect PostgreSQL databases |
+| market-data dashboard | `http://localhost:8081/` | Static demo page for the producer side |
+| market-data API | `http://localhost:8081/api/dashboard` | Recent published events and configured symbols |
+| portfolio dashboard | `http://localhost:8082/` | Static demo page for the consumer/read-model side |
+| portfolio API | `http://localhost:8082/api/dashboard` | Current price-cache snapshot |
+| price API | `GET http://localhost:8082/prices` | Full local price cache |
+| single price API | `GET http://localhost:8082/prices/{symbol}` | Latest cached price for one symbol |
+| portfolio API | `GET http://localhost:8082/portfolios/{userId}` | Holdings for a user |
+| valuation API | `GET http://localhost:8082/portfolios/{userId}/value` | Total portfolio value in USDT |
+| user confirmation API | `GET http://localhost:8084/user/confirm/{userId}` | Completes onboarding confirmation |
 
-### portfolio-service (`application.yml`)
+`transaction-service` and `onboarding-service` do not expose a public REST API in this branch; they participate through Camunda workers and BPMN deployment.
 
-| Property | Default | Env var override |
-|---|---|---|
-| `spring.kafka.bootstrap-servers` | `localhost:9092` | `KAFKA_BOOTSTRAP_SERVERS` |
-| `spring.datasource.url` | `jdbc:postgresql://localhost:5432/cryptoflow` | `SPRING_DATASOURCE_URL` |
-| `spring.datasource.username` | `cryptoflow` | `SPRING_DATASOURCE_USERNAME` |
-| `spring.datasource.password` | `cryptoflow` | `SPRING_DATASOURCE_PASSWORD` |
+## Repository layout
 
----
-
-## Repository Layout
-
-```
-EDPO-Project-HS26/
-├── pom.xml                          ← Maven parent POM (multi-module)
-│
-├── shared-events/                   ← Shared Kafka event DTOs (Java records)
-│   └── .../events/CryptoPriceUpdatedEvent.java
-│
-├── market-data-service/             ← Producer (port 8081)
-│   ├── adapter/in/binance/           ← Binance WebSocket stream client
-│   ├── adapter/out/kafka/           ← KafkaTemplate producer
-│   ├── application/                 ← PriceEventMapper
-│   ├── domain/                      ← PriceTick domain object
-│   └── Dockerfile
-│
-├── portfolio-service/               ← Consumer + REST API (port 8082)
-│   ├── adapter/in/kafka/            ← @KafkaListener consumer
-│   ├── adapter/in/web/              ← REST controllers (prices, portfolios)
-│   ├── adapter/out/persistence/     ← JPA entities + Flyway migration
-│   ├── application/                 ← PortfolioService (valuation logic)
-│   ├── domain/                      ← LocalPriceCache (ECST)
-│   └── Dockerfile
-│
+```text
+EDPO-Project-FS26/
+├── pom.xml
+├── shared-events/
+├── market-data-service/
+├── portfolio-service/
+├── transaction-service/
+├── user-service/
+├── onboarding-service/
 ├── docker/
-│   ├── docker-compose.yml           ← Full local stack
-│   └── README.md                    ← Docker quick-start guide
-│
-├── docs/                            ← Architecture docs (see PROJECT_ARCHITECTURE.md)
-└── assignments/                     ← Course assignment materials
+└── docs/
 ```
 
----
+## Useful documentation
 
-## EDA Patterns Demonstrated
-
-| Pattern | Where |
-|---|---|
-| **Event Notification** | `market-data-service` receives Binance stream updates and emits price events with no knowledge of who consumes them. Adding a new consumer requires zero changes to the producer. |
-| **Event-carried State Transfer (ECST)** | `portfolio-service` maintains a local price replica from Kafka events. It never calls `market-data-service` directly, making it resilient to producer downtime. |
-
-See [`PROJECT_ARCHITECTURE.md`](docs/PROJECT_ARCHITECTURE.md) for the full design document.
-
----
+- [`assignments/ex-3/workflows.md`](assignments/ex-3/workflows.md) - BPMN workflow rationale and flow descriptions
+- [`docs/diagrams/context-map.md`](docs/diagrams/context-map.md) - bounded-context and system overview diagrams
+- [`docs/diagrams/sequence-event-flow.md`](docs/diagrams/sequence-event-flow.md) - onboarding, trading, and read-path sequence diagrams
+- [`docs/adrs/`](docs/adrs/) - architecture decision records
 
 ## Team
 
-| Name | Contribution                                                          |
-|---|-----------------------------------------------------------------------|
-| Ioannis Theodosiadis | Architecture, project structure, portfolio-service |
-| Cyril Gabriele | Architecture, market-data-service                                     |
+| Name | Contribution |
+|---|---|
+| Ioannis Theodosiadis | Architecture and implementation |
+| Cyril Gabriele | Architecture and implementation |

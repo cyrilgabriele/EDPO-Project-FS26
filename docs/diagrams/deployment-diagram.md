@@ -1,92 +1,54 @@
-# Deployment Diagram – Docker Compose Stack
-
-## Container Topology
-
-```mermaid
-graph TB
-    subgraph host["Host Machine (localhost)"]
-
-        subgraph docker["Docker Compose Network"]
-
-            subgraph infra["Infrastructure Layer"]
-                kafka["Kafka Broker<br/>──────────────<br/>confluentinc/cp-kafka:7.6.0<br/>──────────────<br/>Internal: kafka:29092<br/>Host: localhost:9092<br/>Controller: kafka:9093"]
-                postgres["PostgreSQL<br/>──────────────<br/>postgres:16-alpine<br/>──────────────<br/>Host: localhost:5432<br/>DB: cryptoflow"]
-            end
-
-            subgraph monitoring["Monitoring & Admin"]
-                kafkaui["Kafka UI<br/>──────────────<br/>provectuslabs/kafka-ui<br/>──────────────<br/>Host: localhost:8080"]
-                pgadmin["pgAdmin<br/>──────────────<br/>dpage/pgadmin4<br/>──────────────<br/>Host: localhost:5050"]
-            end
-
-            subgraph services["Application Services"]
-                mds["market-data-service<br/>──────────────<br/>Java 21 / Spring Boot<br/>──────────────<br/>Host: localhost:8081"]
-                ps["portfolio-service<br/>──────────────<br/>Java 21 / Spring Boot<br/>──────────────<br/>Host: localhost:8082"]
-            end
-
-        end
-
-        subgraph external["External"]
-            binance["Binance WebSocket API<br/>stream.binance.com"]
-        end
-
-        subgraph volumes["Docker Volumes"]
-            pgdata[("postgres-data")]
-            pgadmindata[("pgadmin-data")]
-        end
-
-    end
-
-    %% Dependencies (startup order)
-    kafka -.->|healthy| kafkaui
-    kafka -.->|healthy| mds
-    kafka -.->|healthy| ps
-    postgres -.->|healthy| pgadmin
-    postgres -.->|healthy| ps
-
-    %% Data flows
-    mds -->|"produce events<br/>kafka:29092"| kafka
-    kafka -->|"consume events<br/>kafka:29092"| ps
-    ps -->|"JDBC<br/>postgres:5432"| postgres
-    binance -->|"WSS push<br/>ticker stream"| mds
-    kafkaui -->|"monitor<br/>kafka:29092"| kafka
-    pgadmin -->|"admin<br/>postgres:5432"| postgres
-
-    %% Volumes
-    postgres --- pgdata
-    pgadmin --- pgadmindata
-
-    style infra fill:#e3f2fd,stroke:#1565c0
-    style monitoring fill:#f3e5f5,stroke:#7b1fa2
-    style services fill:#e8f5e9,stroke:#2e7d32
-    style external fill:#fff8e1,stroke:#f9a825
-```
-
-## Startup Order
+# Deployment Diagram
 
 ```mermaid
 graph LR
-    A["kafka<br/>"] -->|healthy| B["kafka-ui"]
-    A -->|healthy| E["market-data-service"]
-    A -->|healthy| F["portfolio-service"]
-    C["postgres"] -->|healthy| D["pgadmin"]
-    C -->|healthy| F
+    subgraph compose["Docker Compose stack"]
+        subgraph services["Application services"]
+            mds["market-data-service"]
+            us["user-service"]
+            ts["transaction-service"]
+            ps["portfolio-service"]
+        end
 
-    style A fill:#e3f2fd,stroke:#1565c0
-    style C fill:#e3f2fd,stroke:#1565c0
-    style B fill:#f3e5f5,stroke:#7b1fa2
-    style D fill:#f3e5f5,stroke:#7b1fa2
-    style E fill:#e8f5e9,stroke:#2e7d32
-    style F fill:#e8f5e9,stroke:#2e7d32
+        subgraph infra["Shared infrastructure"]
+            kafka["Kafka"]
+            postgres["PostgreSQL"]
+            kafkaui["Kafka UI"]
+            pgadmin["pgAdmin"]
+        end
+    end
+
+    binance["Binance WebSocket API"]
+    camunda["Camunda SaaS"]
+    onboarding["onboarding-service module<br/>(not deployed by Compose)"]
+
+    binance --> mds
+    mds --> kafka
+    us --> kafka
+    ts --> kafka
+    ps --> kafka
+
+    us --> postgres
+    ts --> postgres
+    ps --> postgres
+
+    kafkaui --> kafka
+    pgadmin --> postgres
+
+    onboarding -.->|"deploys userOnboarding"| camunda
+    ts -.->|"deploys placeOrder"| camunda
+    us -.->|"messages and jobs"| camunda
+    ps -.->|"workers"| camunda
+
+    style infra fill:#e3f2fd,stroke:#1565c0
+    style services fill:#e8f5e9,stroke:#2e7d32
+    style binance fill:#fff8e1,stroke:#f9a825
+    style camunda fill:#fff8e1,stroke:#f9a825
+    style onboarding fill:#f5f5f5,stroke:#9e9e9e,stroke-dasharray: 5 5
 ```
 
-## Port Map
+Notes:
 
-| Service | Internal Port | Host Port | URL |
-|---------|--------------|-----------|-----|
-| Kafka (client) | 29092 | 9092 | `localhost:9092` |
-| Kafka (controller) | 9093 | — | internal only |
-| Kafka UI | 8080 | 8080 | http://localhost:8080 |
-| PostgreSQL | 5432 | 5432 | `localhost:5432` |
-| pgAdmin | 80 | 5050 | http://localhost:5050 |
-| market-data-service | 8081 | 8081 | http://localhost:8081 |
-| portfolio-service | 8082 | 8082 | http://localhost:8082 |
+- `docker/docker-compose.yml` runs four application services: `market-data-service`, `portfolio-service`, `transaction-service`, and `user-service`.
+- `onboarding-service` exists as a module, but it is not deployed by `docker/docker-compose.yml`.
+- The diagram intentionally omits port numbers, container images, and other low-value deployment detail.

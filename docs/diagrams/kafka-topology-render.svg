@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1220" viewBox="0 0 1680 1220" role="img" aria-labelledby="title desc">
+  <title id="title">Kafka topic topology</title>
+  <desc id="desc">Rendered overview of services, Kafka topics, and consumer relationships in the current CryptoFlow implementation.</desc>
+
+  <defs>
+    <style>
+      .service {
+        fill: #f3f4f6;
+        stroke: #6b7280;
+        stroke-width: 2;
+      }
+      .service-text {
+        fill: #111827;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 26px;
+        font-weight: 700;
+      }
+      .topic-text {
+        fill: #111827;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 23px;
+        font-weight: 700;
+      }
+      .label {
+        fill: #374151;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 18px;
+      }
+      .small-label {
+        fill: #374151;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 16px;
+      }
+      .topic-price {
+        fill: #e8f5e9;
+        stroke: #2e7d32;
+        stroke-width: 3;
+      }
+      .topic-order {
+        fill: #e3f2fd;
+        stroke: #1565c0;
+        stroke-width: 3;
+      }
+      .topic-confirmed {
+        fill: #fff8e1;
+        stroke: #ef6c00;
+        stroke-width: 3;
+      }
+      .topic-portfolio-comp {
+        fill: #f3e5f5;
+        stroke: #6a1b9a;
+        stroke-width: 3;
+      }
+      .topic-user-comp {
+        fill: #ede7f6;
+        stroke: #4527a0;
+        stroke-width: 3;
+      }
+      .topic-dlt {
+        fill: #ffebee;
+        stroke: #c62828;
+        stroke-width: 3;
+      }
+      .edge {
+        fill: none;
+        stroke: #334155;
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1680" height="1220" fill="#fcfcfb"/>
+
+  <!-- Row 1 -->
+  <rect class="service" x="60" y="56" rx="16" ry="16" width="320" height="72"/>
+  <text class="service-text" x="220" y="101" text-anchor="middle">market-data-service</text>
+
+  <rect class="topic-price" x="540" y="46" rx="18" ry="18" width="420" height="92"/>
+  <text class="topic-text" x="750" y="102" text-anchor="middle">crypto.price.raw</text>
+
+  <rect class="service" x="1320" y="32" rx="16" ry="16" width="310" height="72"/>
+  <text class="service-text" x="1475" y="77" text-anchor="middle">transaction-service</text>
+
+  <rect class="service" x="1320" y="142" rx="16" ry="16" width="310" height="72"/>
+  <text class="service-text" x="1475" y="187" text-anchor="middle">portfolio-service</text>
+
+  <rect class="topic-dlt" x="940" y="232" rx="18" ry="18" width="460" height="92"/>
+  <text class="topic-text" x="1170" y="288" text-anchor="middle">crypto.price.raw.DLT</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 380 92 L 540 92"/>
+  <text class="label" x="460" y="74" text-anchor="middle">publishes</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 960 80 C 1080 78, 1200 70, 1320 70"/>
+  <text class="label" x="1140" y="50" text-anchor="middle">consumes</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 960 112 C 1080 124, 1200 178, 1320 178"/>
+  <text class="label" x="1145" y="150" text-anchor="middle">consumes</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 770 138 C 830 200, 875 242, 940 278"/>
+  <text class="small-label" x="858" y="208" text-anchor="middle">failed records</text>
+  <text class="small-label" x="858" y="228" text-anchor="middle">after retries</text>
+
+  <!-- Row 2 -->
+  <rect class="service" x="60" y="398" rx="16" ry="16" width="300" height="72"/>
+  <text class="service-text" x="200" y="443" text-anchor="middle">transaction-service</text>
+
+  <rect class="topic-order" x="540" y="390" rx="18" ry="18" width="420" height="86"/>
+  <text class="topic-text" x="750" y="443" text-anchor="middle">transaction.order.approved</text>
+
+  <rect class="service" x="1320" y="398" rx="16" ry="16" width="310" height="72"/>
+  <text class="service-text" x="1475" y="443" text-anchor="middle">portfolio-service</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 360 434 L 540 434"/>
+  <text class="label" x="450" y="416" text-anchor="middle">publishes</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 960 434 L 1320 434"/>
+  <text class="label" x="1140" y="416" text-anchor="middle">consumes</text>
+
+  <!-- Row 3 -->
+  <rect class="service" x="60" y="618" rx="16" ry="16" width="240" height="72"/>
+  <text class="service-text" x="180" y="663" text-anchor="middle">user-service</text>
+
+  <rect class="topic-confirmed" x="540" y="602" rx="18" ry="18" width="420" height="92"/>
+  <text class="topic-text" x="750" y="650" text-anchor="middle">user.confirmed</text>
+  <text class="label" x="750" y="676" text-anchor="middle">(compacted user-read-model)</text>
+
+  <rect class="service" x="1320" y="618" rx="16" ry="16" width="310" height="72"/>
+  <text class="service-text" x="1475" y="663" text-anchor="middle">transaction-service</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 300 654 L 540 654"/>
+  <text class="label" x="420" y="636" text-anchor="middle">publishes</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 960 654 L 1320 654"/>
+  <text class="label" x="1140" y="636" text-anchor="middle">consumes</text>
+
+  <!-- Row 4 -->
+  <rect class="service" x="60" y="838" rx="16" ry="16" width="240" height="72"/>
+  <text class="service-text" x="180" y="883" text-anchor="middle">user-service</text>
+
+  <rect class="topic-portfolio-comp" x="540" y="822" rx="18" ry="18" width="420" height="92"/>
+  <text class="topic-text" x="750" y="878" text-anchor="middle">crypto.portfolio.compensation</text>
+
+  <rect class="service" x="1320" y="838" rx="16" ry="16" width="310" height="72"/>
+  <text class="service-text" x="1475" y="883" text-anchor="middle">portfolio-service</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 300 874 L 540 874"/>
+  <text class="label" x="420" y="856" text-anchor="middle">publishes</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 960 874 L 1320 874"/>
+  <text class="label" x="1140" y="856" text-anchor="middle">consumes</text>
+
+  <!-- Row 5 -->
+  <rect class="service" x="60" y="1058" rx="16" ry="16" width="300" height="72"/>
+  <text class="service-text" x="210" y="1103" text-anchor="middle">portfolio-service</text>
+
+  <rect class="topic-user-comp" x="540" y="1042" rx="18" ry="18" width="420" height="92"/>
+  <text class="topic-text" x="750" y="1098" text-anchor="middle">crypto.user.compensation</text>
+
+  <rect class="service" x="1320" y="1058" rx="16" ry="16" width="240" height="72"/>
+  <text class="service-text" x="1440" y="1103" text-anchor="middle">user-service</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 360 1094 L 540 1094"/>
+  <text class="label" x="450" y="1076" text-anchor="middle">publishes</text>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 960 1094 L 1320 1094"/>
+  <text class="label" x="1140" y="1076" text-anchor="middle">consumes</text>
+</svg>

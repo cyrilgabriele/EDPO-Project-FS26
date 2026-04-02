@@ -1,0 +1,53 @@
+{
+  "executionPlatform": "Camunda Cloud",
+  "executionPlatformVersion": "8.6.0",
+  "exporter": {
+    "name": "Camunda Web Modeler",
+    "version": "599897b"
+  },
+  "schemaVersion": 19,
+  "id": "UserCreation",
+  "components": [
+    {
+      "label": "Username",
+      "type": "textfield",
+      "layout": {
+        "row": "Row_0b54j4r",
+        "columns": null
+      },
+      "id": "Field_0ozdb9d",
+      "key": "userName",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "E-Mail",
+      "type": "textfield",
+      "layout": {
+        "row": "Row_0pmscfw",
+        "columns": null
+      },
+      "id": "Field_07n3ry3",
+      "key": "e_mail",
+      "validate": {
+        "required": true,
+        "validationType": "email"
+      }
+    },
+    {
+      "label": "Password",
+      "type": "textfield",
+      "layout": {
+        "row": "Row_08fnt5j",
+        "columns": null
+      },
+      "id": "Field_1smc8bh",
+      "key": "password",
+      "validate": {
+        "required": true
+      }
+    }
+  ],
+  "type": "default"
+}

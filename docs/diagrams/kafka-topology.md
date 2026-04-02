@@ -1,66 +1,58 @@
 # Kafka Topic Topology
 
-## Topic Overview
+## Overview
 
 ```mermaid
 graph LR
-    subgraph Producers
-        MDS["market-data-service"]
-    end
+    MDS["market-data-service"]
+    TS["transaction-service"]
+    PS["portfolio-service"]
+    US["user-service"]
 
-    subgraph Topics
-        CPR["crypto.price.raw<br/>──────────────<br/>Partitions: 3<br/>Retention: 1h<br/>Key: symbol"]
-        DLT["crypto.price.raw.DLT<br/>──────────────<br/>Partitions: 1<br/>Retention: 7d<br/>(Dead Letter)"]
-    end
+    CPR["crypto.price.raw"]
+    TOD["transaction.order.approved"]
+    UCR["user.confirmed<br/>(compacted user-read-model)"]
+    CPC["crypto.portfolio.compensation"]
+    CUC["crypto.user.compensation"]
+    DLT["crypto.price.raw.DLT"]
 
-    subgraph Consumers
-        PS_C["portfolio-service<br/>group: portfolio-service-group"]
-    end
+    MDS -->|publishes| CPR
+    CPR -->|consumes| TS
+    CPR -->|consumes| PS
 
-    MDS -->|produce| CPR
-    CPR -->|consume| PS_C
-    CPR -->|error recovery| DLT
+    TS -->|publishes| TOD
+    TOD -->|consumes| PS
+
+    US -->|publishes| UCR
+    UCR -->|consumes| TS
+
+    US -->|publishes| CPC
+    CPC -->|consumes| PS
+
+    PS -->|publishes| CUC
+    CUC -->|consumes| US
+
+    CPR -->|failed records after retries| DLT
 
     style CPR fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style TOD fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style UCR fill:#fff8e1,stroke:#ef6c00,stroke-width:2px
+    style CPC fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    style CUC fill:#ede7f6,stroke:#4527a0,stroke-width:2px
     style DLT fill:#ffebee,stroke:#c62828,stroke-width:2px
 ```
 
-## Partition Key Strategy
+## Rendered Preview
 
-```mermaid
-graph TD
-    subgraph "market-data-service publishes with key = symbol"
-        E1["CryptoPriceUpdatedEvent<br/>key: BTCUSDT"]
-        E2["CryptoPriceUpdatedEvent<br/>key: ETHUSDT"]
-        E3["CryptoPriceUpdatedEvent<br/>key: SOLUSDT"]
-        E4["CryptoPriceUpdatedEvent<br/>key: BNBUSDT"]
-        E5["CryptoPriceUpdatedEvent<br/>key: XRPUSDT"]
-        E6["CryptoPriceUpdatedEvent<br/>key: LTCUSDT"]
-    end
+![Rendered Kafka topology](./kafka-topology-render.svg)
 
-    subgraph "crypto.price.raw (3 partitions)"
-        P0["Partition 0"]
-        P1["Partition 1"]
-        P2["Partition 2"]
-    end
+## Topic Summary
 
-    E1 -->|"hash(BTCUSDT) % 3"| P1
-    E2 -->|"hash(ETHUSDT) % 3"| P0
-    E3 -->|"hash(SOLUSDT) % 3"| P2
-    E4 -->|"hash(BNBUSDT) % 3"| P0
-    E5 -->|"hash(XRPUSDT) % 3"| P1
-    E6 -->|"hash(LTCUSDT) % 3"| P2
-
-    subgraph "Guarantee"
-        G["All events for one symbol always<br/>go to the same partition<br/>→ per-symbol ordering preserved"]
-    end
-
-    style G fill:#e8f5e9,stroke:#2e7d32
-```
-
-## Topic Configuration Summary
-
-| Topic | Partitions | Retention | Key | Producers | Consumers |
-|-------|-----------|-----------|-----|-----------|-----------|
-| `crypto.price.raw` | 3 | 1 h | symbol | market-data-service | portfolio-service |
-| `crypto.price.raw.DLT` | 1 | 7 d | (original key) | DefaultErrorHandler | Ops (manual) |
+| Topic | Producer | Consumer | Notes |
+|-------|----------|----------|-------|
+| `crypto.price.raw` | `market-data-service` | `portfolio-service`, `transaction-service` | Shared live price stream |
+| `transaction.order.approved` | `transaction-service` | `portfolio-service` | Approved order events |
+| `user.confirmed` | `user-service` | `transaction-service` | Compacted user-read-model topic |
+| `crypto.portfolio.compensation` | `user-service` | `portfolio-service` | Compensation flow |
+| `crypto.user.compensation` | `portfolio-service` | `user-service` | Compensation flow |
+| `crypto.price.raw.DLT` | Consumer error handler | Operational review | Dead-letter topic for failed `crypto.price.raw` records after retries |
