@@ -4,7 +4,7 @@ This chapter describes the system architecture of CryptoFlow. It begins with the
 
 == Service Topology
 
-CryptoFlow is a distributed system comprising five Spring Boot microservices that communicate exclusively through Apache Kafka events and Camunda 8 (Zeebe) process orchestration. No service makes synchronous REST or gRPC calls to another service for domain operations — REST endpoints are exposed only for external client access.
+CryptoFlow is a distributed system comprising five Spring Boot microservices that communicate exclusively through Apache Kafka events and Camunda 8 (Zeebe) process orchestration. No service makes synchronous REST or gRPC calls to another service for domain operations. The REST endpoints are exposed only for external client access.
 
 #figure(
   image("figures/context-map-detailed.svg", width: 100%),
@@ -123,9 +123,9 @@ Beyond the topic layout, the Kafka layer is configured at three levels: broker, 
   ),
 ) <tab:kafka-consumer-config>
 
-All producer configurations across services use the same settings. The `ErrorHandlingDeserializer` and DLT recovery are configured for the price-event consumers in `portfolio-service` and `transaction-service`. The compensation consumers in `user-service` and `portfolio-service` use the same offset and commit settings but do not currently route to a DLT, because compensation events are idempotent by design — a failed compensation attempt is retried on the next delivery rather than dead-lettered.
+All producer configurations across services use the same settings. The `ErrorHandlingDeserializer` and DLT recovery are configured for the price-event consumers in `portfolio-service` and `transaction-service`. The compensation consumers in `user-service` and `portfolio-service` use the same offset and commit settings but do not currently route to a DLT, because compensation events are idempotent by design. A failed compensation attempt is retried on the next delivery rather than dead-lettered.
 
-*Single-broker trade-off.* The current deployment runs a single Kafka broker with no replication. This means that `acks=all` provides no durability advantage over `acks=1` — the experiments in @results demonstrate this directly: data loss under `acks=1` only occurs when a leader crashes before followers replicate, and with one broker there are no followers. The configuration is a conscious development-environment choice (ADR-0001): the architecture and code are designed for a replicated cluster, but the Docker Compose stack prioritizes simplicity over fault tolerance. A production deployment would require a multi-broker cluster with `replication.factor >= 3` and `min.insync.replicas = 2` to realize the durability guarantees that `acks=all` is designed to provide.
+*Single-broker trade-off.* The current deployment runs a single Kafka broker with no replication. This means that `acks=all` provides no durability advantage over `acks=1`. The experiments in @results demonstrate this directly: data loss under `acks=1` only occurs when a leader crashes before followers replicate, and with one broker there are no followers. The configuration is a conscious development-environment choice (ADR-0001): the architecture and code are designed for a replicated cluster, but the Docker Compose stack prioritizes simplicity over fault tolerance. A production deployment would require a multi-broker cluster with `replication.factor >= 3` and `min.insync.replicas = 2` to realize the durability guarantees that `acks=all` is designed to provide.
 
 == Process-Oriented Architectural Parts
 
@@ -165,7 +165,7 @@ The `userOnboarding.bpmn` process, deployed by the onboarding service, implement
   caption: [Supporting detail: `UserConfirmedEvent` propagation into the `transaction-service` confirmed-user projection, enabling later order placement to validate users locally (ADR-0017)],
 ) <fig:user-confirmed-readmodel-sequence>
 
-@fig:onboarding-parallel-saga shows the orchestrated BPMN shape, while @fig:onboarding-sequence shows the core runtime collaboration — parallel creation and compensation mediated by the compensation Kafka topics (ADR-0011). The cross-cutting read-model propagation triggered by the confirmation step is kept out of @fig:onboarding-sequence to preserve focus; @fig:user-confirmed-readmodel-sequence shows it as a dedicated detail. Its structure reflects three key modeling decisions:
+@fig:onboarding-parallel-saga shows the orchestrated BPMN shape, while @fig:onboarding-sequence shows the core runtime collaboration. A parallel creation and compensation mediated by the compensation Kafka topics (ADR-0011). The cross-cutting read-model propagation triggered by the confirmation step is kept out of @fig:onboarding-sequence to preserve focus; @fig:user-confirmed-readmodel-sequence shows it as a dedicated detail. Its structure reflects three key modeling decisions:
 
 *Event-based confirmation wait.* After the confirmation email is sent, the process suspends at an event-based gateway rather than polling or blocking a thread. Zeebe durably persists the waiting state, so the process can survive service restarts during the wait. The one-minute timer boundary ensures that abandoned registrations terminate cleanly by marking the confirmation link as `INVALIDATED` (ADR-0010).
 
@@ -192,9 +192,9 @@ The `placeOrder.bpmn` process, deployed by the transaction service, implements a
   caption: [Supporting detail: transactional outbox mechanics. `approveOrderWorker` writes the APPROVED status and the outbox row in one local transaction; `publishOrderApprovedWorker` publishes and marks the row; the `OutboxScheduler` republishes orphaned rows (ADR-0014)],
 ) <fig:outbox-sequence>
 
-@fig:placeorder-fairy-tale-saga shows the orchestrated BPMN shape, while @fig:placeorder-sequence shows the core runtime collaboration — including the downstream `portfolio-service` consumer that is deliberately outside the orchestrated flow (ADR-0013, ADR-0015) and therefore not visible in the BPMN. The outbox write/publish/recover mechanics are kept out of @fig:placeorder-sequence to preserve focus; @fig:outbox-sequence shows them as a dedicated detail. Its structure reflects the following modeling decisions:
+@fig:placeorder-fairy-tale-saga shows the orchestrated BPMN shape, while @fig:placeorder-sequence shows the core runtime collaboration. This includes the downstream `portfolio-service` consumer that is deliberately outside the orchestrated flow (ADR-0013, ADR-0015) and therefore not visible in the BPMN. The outbox write/publish/recover mechanics are kept out of @fig:placeorder-sequence to preserve focus; @fig:outbox-sequence shows them as a dedicated detail. Its structure reflects the following modeling decisions:
 
-*Event-based price-match wait.* The process suspends at an event-based gateway waiting for a `price-matched` message correlated by `transactionId`. This wait is of non-deterministic duration — it may last seconds or never terminate. Zeebe durably suspends the instance without holding a distributed lock or database connection (ADR-0013). A one-minute timer provides an upper bound: if no match occurs, the order is rejected and the user is notified.
+*Event-based price-match wait.* The process suspends at an event-based gateway waiting for a `price-matched` message correlated by `transactionId`. This wait is of non-deterministic duration. It may last seconds or never terminate. Zeebe durably suspends the instance without holding a distributed lock or database connection (ADR-0013). A one-minute timer provides an upper bound: if no match occurs, the order is rejected and the user is notified.
 
 *Transactional outbox for reliable publication.* The approval path uses two sequential workers. `approveOrderWorker` writes both the `APPROVED` status and an outbox row in a single local database transaction. `publishOrderApprovedWorker` then reads and publishes the outbox entry to Kafka. A scheduled safety net republishes any rows that remain unpublished after a crash (ADR-0014). This guarantees that an approved order does not silently miss the event that must later update the portfolio.
 
@@ -225,11 +225,11 @@ This separation ensures that transport, workflow-engine, and persistence details
 
 Each stateful service owns a dedicated PostgreSQL 16 database (ADR-0019): `user-service` owns `user_service_db`, `portfolio-service` owns `portfolio_service_db`, and `transaction-service` owns `transaction_service_db`. No service reads from or writes to another service's tables. Cross-service references use opaque identifiers, not foreign keys.
 
-Schema changes are managed through Flyway versioned migrations. Hibernate runs in `validate` mode — it verifies the entity-to-schema mapping at startup but never modifies the database (ADR-0007). Cross-service consistency is achieved through the patterns described above: Kafka events, replicated read-models, the transactional outbox, and orchestrated sagas.
+Schema changes are managed through Flyway versioned migrations. Hibernate runs in `validate` mode. This means that it verifies the entity-to-schema mapping at startup but never modifies the database (ADR-0007). Cross-service consistency is achieved through the patterns described above: Kafka events, replicated read-models, the transactional outbox, and orchestrated sagas.
 
 === Shared Event Contracts
 
-Event schemas are defined once in the `shared-events` Maven module (ADR-0005). All producing and consuming services depend on it at compile time, ensuring type-safe event contracts. The module contains only Java records and Jackson serialization dependencies — no business logic. Schema changes are atomic: a single commit updates the contract and all affected consumers.
+Event schemas are defined once in the `shared-events` Maven module (ADR-0005). All producing and consuming services depend on it at compile time, ensuring type-safe event contracts. The module contains only Java records and Jackson serialization dependencies  but no business logic. Schema changes are atomic: a single commit updates the contract and all affected consumers.
 
 == Key Architectural Decisions
 
