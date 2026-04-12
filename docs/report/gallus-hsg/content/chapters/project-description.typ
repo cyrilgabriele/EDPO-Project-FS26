@@ -19,7 +19,7 @@ The central goal of this project was to implement the concepts covered in the ED
 @fig:context-map shows the domain as a DDD context map. Five bounded contexts form the platform, each owned by a single service.
 
 #figure(
-  image("figures/context-map.jpeg", width: 80%),
+  image("figures/context-map.jpeg", width: 62%),
   caption: [Context map of CryptoFlow showing bounded contexts, upstream/downstream relationships, and external systems],
 ) <fig:context-map>
 
@@ -30,6 +30,30 @@ The central goal of this project was to implement the concepts covered in the ED
 / Onboarding: Dedicated saga orchestrator with no persistent data of its own. Coordinates user and portfolio creation across bounded contexts via Camunda 8, keeping orchestration separate from domain ownership.
 
 User Identity and Portfolio are connected through a Partnership relationship: bidirectional compensation events allow each side to roll back the other during onboarding failures. All contexts share a common event schema through the `shared-events` Shared Kernel module, ensuring compile-time consistency.
+
+=== Architecture Characteristics <architecture-characteristics>
+
+The bounded contexts and flows described above impose a set of quality attributes that any architectural solution must satisfy. The worksheet below identifies seven driving characteristics derived from the domain requirements, marks the top three, and lists additional characteristics that were considered but not deemed critical.
+
+#show figure: set block(breakable: true)
+#figure(
+  caption: "Architecture characteristics worksheet",
+  table(
+    columns: (1.8fr, 0.4fr, 3fr),
+    [*Characteristic*], [*Top 3*], [*Rationale*],
+    [Data integrity], [#sym.checkmark], [Domain entities transition through distinct lifecycle states and are referenced across bounded contexts. If a state change is recorded in one context but its downstream effect is lost, the contexts diverge from each other. The platform must guarantee that every state change is durably captured and propagated without silent loss.],
+    [Fault tolerance], [#sym.checkmark], [Processes can span multiple bounded contexts that can fail independently after a peer has already succeeded. Some contexts also depend on external systems that may disconnect at any time. The system must handle partial failures, malformed messages, and service crashes without corrupting state or blocking other work.],
+    [Data consistency], [#sym.checkmark], [Each bounded context owns its own data, yet business processes require coordinated outcomes across them. There is no shared database. The system must define clear consistency boundaries and ensure that every cross-context interaction converges to a correct state.],
+    [Availability], [], [Each bounded context should remain functional even when its upstream or downstream peers are temporarily unreachable. A failure in one context should not cascade into downtime for unrelated contexts.],
+    [Responsiveness], [], [External market conditions change continuously. The platform must reflect relevant state changes with minimal delay so that downstream consumers can operate on current information.],
+    [Deployability], [], [Independently owned bounded contexts must be developable, testable, and releasable without coordinated rollouts. The local development environment must be reproducible and startable with minimal manual steps.],
+    [Extensibility], [], [The platform evolves iteratively. New bounded contexts and event flows are added over time. The internal structure of each service must allow adapters and integration technologies to change without rewriting domain logic.],
+  ),
+) <tab:architecture-characteristics>
+#show figure: set block(breakable: false)
+
+
+*Others considered.* Scalability (relevant for a production exchange but not a driving concern for this educational platform), testability (desirable but did not constrain architectural choices), interoperability (only relevant at the Binance boundary), and recoverability (closely related to fault tolerance but not an independent driver).
 
 === Implemented Concepts
 
