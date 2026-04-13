@@ -180,6 +180,24 @@ services:
       CAMUNDA_CLUSTER_ID_TRANSACTION_SERVICE: ${CAMUNDA_CLUSTER_ID_TRANSACTION_SERVICE}
       CAMUNDA_REGION_TRANSACTION_SERVICE: ${CAMUNDA_REGION_TRANSACTION_SERVICE:-lhr-1}
 
+  # ── Onboarding Service ──────────────────────────────────────────────────────
+  onboarding-service:
+    build:
+      context: ..
+      dockerfile: onboarding-service/Dockerfile
+    ports:
+      - "8085:8085"
+    environment:
+      CAMUNDA_CLIENT_ID_ONBOARDING_SERVICE: ${CAMUNDA_CLIENT_ID_ONBOARDING_SERVICE}
+      CAMUNDA_CLIENT_SECRET_ONBOARDING_SERVICE: ${CAMUNDA_CLIENT_SECRET_ONBOARDING_SERVICE}
+      CAMUNDA_CLUSTER_ID_ONBOARDING_SERVICE: ${CAMUNDA_CLUSTER_ID_ONBOARDING_SERVICE}
+      CAMUNDA_REGION_ONBOARDING_SERVICE: ${CAMUNDA_REGION_ONBOARDING_SERVICE:-lhr-1}
+      # Operate REST API credentials (must have Operate scope enabled in Camunda Console).
+      # If your existing client already has both Zeebe + Operate scopes, set these to
+      # the same values as CAMUNDA_CLIENT_ID/SECRET_ONBOARDING_SERVICE above.
+      CAMUNDA_OPERATE_CLIENT_ID: ${CAMUNDA_CLIENT_ID_ONBOARDING_SERVICE}
+      CAMUNDA_OPERATE_CLIENT_SECRET: ${CAMUNDA_CLIENT_SECRET_ONBOARDING_SERVICE}
+
   # ── User Service ─────────────────────────────────────────────────────────────
   user-service:
     build:

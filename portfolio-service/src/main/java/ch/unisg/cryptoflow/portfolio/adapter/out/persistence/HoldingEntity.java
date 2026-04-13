@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 @Getter
 @Entity
@@ -23,6 +24,9 @@ public class HoldingEntity {
     @Column(nullable = false, precision = 30, scale = 8)
     private BigDecimal averagePurchasePrice;
 
+    @Column(name = "added_at", nullable = false, updatable = false)
+    private Instant addedAt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "portfolio_id", nullable = false)
     private PortfolioEntity portfolio;
@@ -35,6 +39,7 @@ public class HoldingEntity {
         this.quantity = quantity;
         this.averagePurchasePrice = averagePurchasePrice;
         this.portfolio = portfolio;
+        this.addedAt = Instant.now();
     }
 
     /** Called on subsequent purchases: updates quantity and recalculates the weighted average price. */

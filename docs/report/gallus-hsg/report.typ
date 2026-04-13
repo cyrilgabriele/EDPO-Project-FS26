@@ -44,4 +44,7 @@
 #include "./content/chapters/results.typ"
 
 #pagebreak()
+#include "./content/chapters/demonstration.typ"
+
+#pagebreak()
 #include "./content/chapters/lessons-learned.typ"

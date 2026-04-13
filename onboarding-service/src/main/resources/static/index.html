@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <title>onboarding-service · CryptoFlow</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      line-height: 1.6;
+    }
+
+    header {
+      background: #1a1f2e;
+      border-bottom: 2px solid #22c55e;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.4rem; color: #4ade80; font-weight: 700; }
+    header .badge {
+      font-size: 0.75rem;
+      background: #0d2318;
+      color: #bbf7d0;
+      border: 1px solid #22c55e;
+      border-radius: 999px;
+      padding: 0.15rem 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+
+    .notice {
+      max-width: 1200px;
+      margin: 1.25rem auto 0;
+      padding: 0 2rem;
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+    .notice strong { color: #4ade80; }
+
+    main { max-width: 1200px; margin: 1rem auto; padding: 0 2rem 2rem; display: grid; gap: 1.5rem; }
+
+    section {
+      background: #1a1f2e;
+      border: 1px solid #2d3748;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #2d3748;
+    }
+    .section-header h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #4ade80;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .live-meta { font-size: 0.8rem; color: #64748b; display: flex; align-items: center; gap: 1rem; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e;
+           display: inline-block; box-shadow: 0 0 6px #22c55e; }
+    .dot.red { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+
+    .state {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+    }
+    .state.ACTIVE    { background: #1e3a5f; color: #93c5fd; border: 1px solid #3b82f6; }
+    .state.COMPLETED { background: #14291a; color: #86efac; border: 1px solid #22c55e; }
+    .state.INCIDENT  { background: #2d1515; color: #fca5a5; border: 1px solid #ef4444; }
+    .state.CANCELED  { background: #1e1e2e; color: #94a3b8; border: 1px solid #4a5568; }
+    .state.UNKNOWN   { background: #1e1e2e; color: #94a3b8; border: 1px solid #4a5568; }
+    .pulse { width: 7px; height: 7px; border-radius: 50%; background: #3b82f6;
+             animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    thead th {
+      text-align: left;
+      color: #64748b;
+      font-weight: 600;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.4rem 0.75rem;
+      border-bottom: 1px solid #2d3748;
+    }
+    tbody tr { border-bottom: 1px solid #1e2736; transition: background 0.15s; }
+    tbody tr:hover { background: #1e2736; }
+    tbody td { padding: 0.5rem 0.75rem; color: #cbd5e1; vertical-align: middle; }
+    tbody td.mono  { font-family: monospace; font-size: 0.79rem; color: #94a3b8; white-space: nowrap; }
+    tbody td.name  { font-weight: 600; color: #e2e8f0; }
+    tbody td.email { color: #7dd3fc; font-size: 0.82rem; }
+    .empty-row td  { color: #4a5568; text-align: center; padding: 2rem; }
+
+    .stats { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+    .stat-card {
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 0.5rem;
+      padding: 0.75rem 1.25rem;
+      min-width: 110px;
+    }
+    .stat-card .label { font-size: 0.7rem; color: #64748b; text-transform: uppercase;
+                        letter-spacing: 0.06em; font-weight: 600; }
+    .stat-card .value { font-size: 1.4rem; font-weight: 700; font-family: monospace; margin-top: 0.15rem; }
+    .value.active    { color: #93c5fd; }
+    .value.completed { color: #86efac; }
+    .value.incident  { color: #fca5a5; }
+    .value.total     { color: #e2e8f0; }
+
+    .error-banner {
+      background: #2d1515;
+      border: 1px solid #ef4444;
+      border-radius: 0.5rem;
+      padding: 0.875rem 1.1rem;
+      color: #fca5a5;
+      font-size: 0.85rem;
+      font-family: monospace;
+      margin-bottom: 1rem;
+      display: none;
+    }
+
+    details summary {
+      cursor: pointer;
+      font-size: 0.8rem;
+      color: #64748b;
+      user-select: none;
+      padding: 0.25rem 0;
+    }
+    details summary:hover { color: #94a3b8; }
+    pre.diagram {
+      font-family: 'Courier New', monospace;
+      font-size: 0.76rem;
+      color: #a0aec0;
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 0.5rem;
+      padding: 1.1rem;
+      line-height: 1.6;
+      overflow-x: auto;
+      margin-top: 0.75rem;
+    }
+    .hl   { color: #4ade80; }
+    .comp { color: #f87171; }
+    .par  { color: #60a5fa; }
+    .wait { color: #fbbf24; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>onboarding-service</h1>
+  <span class="badge">Parallel Saga</span>
+  <span class="badge">Process Orchestration</span>
+  <span class="badge">Compensation</span>
+  <span class="badge" style="margin-left:auto; font-size:0.7rem; background:#0f1117; border-color:#2d3748; color:#4a5568">
+    CryptoFlow &middot; EDPO FS2026
+  </span>
+</header>
+
+<p class="notice">
+  Live process instances fetched from the <strong>Camunda Operate REST API</strong>.
+  Start a new onboarding in Tasklist, then watch the instance move through states here.
+</p>
+
+<main>
+
+  <section>
+    <div class="section-header">
+      <h2>Live Process Instances &mdash; userOnboarding.bpmn</h2>
+      <div class="live-meta">
+        <span><span id="dot" class="dot red"></span>&nbsp;<span id="status-text">connecting&hellip;</span></span>
+        <span>Updated: <span id="last-updated">&ndash;</span></span>
+        <span>Interval: 5 s</span>
+      </div>
+    </div>
+
+    <div id="error-banner" class="error-banner"></div>
+
+    <div class="stats">
+      <div class="stat-card"><div class="label">Total</div><div class="value total"    id="stat-total">    &ndash;</div></div>
+      <div class="stat-card"><div class="label">Active</div><div class="value active"  id="stat-active">   &ndash;</div></div>
+      <div class="stat-card"><div class="label">Completed</div><div class="value completed" id="stat-completed">&ndash;</div></div>
+      <div class="stat-card"><div class="label">Incident</div><div class="value incident"   id="stat-incident"> &ndash;</div></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>State</th>
+          <th>User</th>
+          <th>Email</th>
+          <th>User ID</th>
+          <th>Instance Key</th>
+          <th>Started</th>
+          <th>Ended</th>
+        </tr>
+      </thead>
+      <tbody id="instances-body">
+        <tr class="empty-row"><td colspan="7">Waiting for data from Operate&hellip;</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <details>
+      <summary>&#9654; Process flow &mdash; userOnboarding.bpmn</summary>
+      <pre class="diagram"><span class="hl">Start</span>
+  |
+  v
+<span class="hl">Enter User Credentials</span>  &lt;-- Camunda Tasklist user task
+  |
+  v
+<span class="hl">Generate Confirmation Link</span>  (prepareUserWorker)
+  |
+  v
+<span class="hl">Send Confirmation Email</span>  (Camunda SMTP connector)
+  |
+  v
+<span class="wait">Event-Based Gateway</span>
+  |--- <span class="wait">UserConfirmed message</span>  --------------------------+
+  +--- <span class="comp">Timer: link expired</span>  --&gt; <span class="comp">End (expired)</span>           |
+                                                        |
+                                                        v
+                                             <span class="par">Parallel Gateway (fork)</span>
+                                             |                    |
+                                             v                    v
+                                    <span class="par">userCreationWorker</span>   <span class="par">portfolioCreationWorker</span>
+                                             |                    |
+                                             +----------+---------+
+                                                        |
+                                                 <span class="par">Parallel Join</span>
+                                                 |-- both OK? --+
+                                                 |              |
+                                                 v            <span class="comp">one failed?</span>
+                                              <span class="hl">End OK</span>            |
+                                                           <span class="comp">Compensate both</span>
+                                                           <span class="comp">--&gt; delete user + portfolio</span>
+                                                           <span class="comp">--&gt; End NOK</span></pre>
+    </details>
+  </section>
+
+</main>
+
+<script>
+  const REFRESH_MS = 5000;
+
+  function fmtDate(iso) {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' +
+           d.toLocaleTimeString('en-GB', { hour12: false });
+  }
+
+  function stateHtml(state) {
+    const pulse = state === 'ACTIVE' ? '<span class="pulse"></span>' : '';
+    return '<span class="state ' + state + '">' + pulse + state + '</span>';
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch('/api/dashboard');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+
+      const errBanner = document.getElementById('error-banner');
+      if (data.error) {
+        errBanner.textContent = 'Operate API error: ' + data.error;
+        errBanner.style.display = 'block';
+        document.getElementById('dot').className = 'dot red';
+        document.getElementById('status-text').textContent = 'error';
+        return;
+      }
+      errBanner.style.display = 'none';
+
+      document.getElementById('dot').className = 'dot';
+      document.getElementById('status-text').textContent = 'live';
+      document.getElementById('last-updated').textContent = new Date().toLocaleTimeString('en-GB');
+
+      const instances = data.instances || [];
+      const counts = { ACTIVE: 0, COMPLETED: 0, INCIDENT: 0 };
+      instances.forEach(function(i) { if (counts[i.state] !== undefined) counts[i.state]++; });
+
+      document.getElementById('stat-total').textContent     = instances.length;
+      document.getElementById('stat-active').textContent    = counts.ACTIVE;
+      document.getElementById('stat-completed').textContent = counts.COMPLETED;
+      document.getElementById('stat-incident').textContent  = counts.INCIDENT;
+
+      const tbody = document.getElementById('instances-body');
+      if (instances.length === 0) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No instances found &mdash; start one in Camunda Tasklist.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = instances.map(function(i) {
+        var ended = i.endDate
+          ? fmtDate(i.endDate)
+          : '<span style="color:#4a5568">running</span>';
+        return '<tr>' +
+          '<td>' + stateHtml(i.state) + '</td>' +
+          '<td class="name">' + (i.userName || '-') + '</td>' +
+          '<td class="email">' + (i.email || '-') + '</td>' +
+          '<td class="mono">' + (i.userId || '-') + '</td>' +
+          '<td class="mono">' + (i.key || '-') + '</td>' +
+          '<td class="mono">' + fmtDate(i.startDate) + '</td>' +
+          '<td class="mono">' + ended + '</td>' +
+          '</tr>';
+      }).join('');
+
+    } catch (err) {
+      document.getElementById('dot').className = 'dot red';
+      document.getElementById('status-text').textContent = 'offline';
+    }
+  }
+
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+</script>
+
+</body>
+</html>

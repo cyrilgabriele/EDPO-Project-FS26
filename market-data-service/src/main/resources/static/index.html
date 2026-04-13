@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
   <title>market-data-service · CryptoFlow</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -17,7 +20,7 @@
     header {
       background: #1a1f2e;
       border-bottom: 2px solid #3b82f6;
-      padding: 1.5rem 2rem;
+      padding: 1.25rem 2rem;
       display: flex;
       align-items: baseline;
       gap: 1rem;
@@ -34,7 +37,16 @@
       letter-spacing: 0.03em;
     }
 
-    main { max-width: 1100px; margin: 0 auto; padding: 2rem; display: grid; gap: 2rem; }
+    .notice {
+      max-width: 1100px;
+      margin: 1.25rem auto 0;
+      padding: 0 2rem;
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+    .notice strong { color: #93c5fd; }
+
+    main { max-width: 1100px; margin: 1rem auto; padding: 0 2rem 2rem; display: grid; gap: 1.5rem; }
 
     section {
       background: #1a1f2e;
@@ -42,59 +54,6 @@
       border-radius: 0.75rem;
       padding: 1.5rem;
     }
-    section h2 {
-      font-size: 1rem;
-      font-weight: 700;
-      color: #93c5fd;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      margin-bottom: 1rem;
-      padding-bottom: 0.5rem;
-      border-bottom: 1px solid #2d3748;
-    }
-
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
-
-    pre.diagram {
-      font-family: 'Courier New', monospace;
-      font-size: 0.8rem;
-      color: #a0aec0;
-      background: #0f1117;
-      border: 1px solid #2d3748;
-      border-radius: 0.5rem;
-      padding: 1.25rem;
-      line-height: 1.5;
-      overflow-x: auto;
-    }
-
-    .pattern-desc p { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 0.75rem; }
-    .pattern-desc p:last-child { margin-bottom: 0; }
-
-    .key-point {
-      display: flex;
-      align-items: flex-start;
-      gap: 0.6rem;
-      padding: 0.6rem 0.75rem;
-      border-radius: 0.4rem;
-      margin-bottom: 0.5rem;
-      font-size: 0.875rem;
-    }
-    .key-point.blue  { background: #1e3a5f; border-left: 3px solid #3b82f6; color: #bfdbfe; }
-    .key-point.green { background: #14291a; border-left: 3px solid #22c55e; color: #bbf7d0; }
-    .key-point span.icon { flex-shrink: 0; }
-
-    .schema-grid {
-      display: grid;
-      grid-template-columns: auto 1fr 2fr;
-      gap: 0.4rem 1.2rem;
-      font-size: 0.85rem;
-      align-items: start;
-    }
-    .schema-grid .sh { color: #64748b; font-size: 0.75rem; font-weight: 600;
-                       text-transform: uppercase; letter-spacing: 0.05em; padding-bottom: 0.3rem; }
-    .schema-grid .field { color: #60a5fa; font-family: monospace; }
-    .schema-grid .type  { color: #f59e0b; font-family: monospace; }
-    .schema-grid .desc  { color: #94a3b8; }
 
     .live-header {
       display: flex;
@@ -104,7 +63,13 @@
       padding-bottom: 0.5rem;
       border-bottom: 1px solid #2d3748;
     }
-    .live-header h2 { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+    .live-header h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #93c5fd;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
     .live-meta { font-size: 0.8rem; color: #64748b; display: flex; align-items: center; gap: 1rem; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e;
            display: inline-block; box-shadow: 0 0 6px #22c55e; }
@@ -128,6 +93,7 @@
     tbody td.sym  { font-weight: 700; color: #60a5fa; }
     tbody td.price { color: #34d399; font-family: monospace; font-weight: 600; }
     tbody td.part  { color: #a78bfa; font-family: monospace; }
+    tbody td.eid   { font-family: monospace; font-size: 0.75rem; color: #94a3b8; word-break: break-all; min-width: 220px; }
 
     .empty-row td { color: #4a5568; text-align: center; padding: 2rem; }
 
@@ -148,110 +114,19 @@
 
 <header>
   <h1>market-data-service</h1>
-  <span class="badge">Event Notification Pattern</span>
+  <span class="badge">Event Notification</span>
   <span class="badge" style="margin-left:auto; font-size:0.7rem; background:#0f1117; border-color:#2d3748; color:#4a5568">
     CryptoFlow · EDPO FS2026
   </span>
 </header>
 
+<p class="notice">
+  Live Kafka events published to <strong>crypto.price.raw</strong> from the Binance WebSocket stream.
+  The producer publishes and forgets — it has no knowledge of downstream consumers.
+</p>
+
 <main>
 
-  <!-- Architecture + Pattern Description -->
-  <div class="two-col">
-
-    <section>
-      <h2>Architecture</h2>
-      <pre class="diagram">
-  Binance WebSocket API
-  wss://stream.binance.com:9443/ws
-                    │ push ticker updates
-                    ▼
-  ┌───────────────────────────────────────┐
-  │        market-data-service            │
-  │                                       │
-  │   ┌──────────────────────────────┐    │
-  │   │  BinanceWebSocketClient      │    │
-  │   │  (subscribes to streams,     │    │
-  │   │   auto-reconnects on drop)   │    │
-  │   └─────────────┬────────────────┘    │
-  │                 │                     │
-  │         ┌───────▼─────────┐           │
-  │         │KafkaProducer    │           │
-  │         │key = symbol     │           │
-  │         └───────┬─────────┘           │
-  └─────────────────┼─────────────────────┘
-                    │
-         topic: crypto.price.raw
-             (3 partitions)
-                    │
-       ┌────────────▼──────────┐
-       │     Apache Kafka      │
-       └────────────┬──────────┘
-                    │
-         (any service may subscribe —
-          producer has no knowledge
-          of who listens)
-      </pre>
-    </section>
-
-    <section class="pattern-desc">
-      <h2>Event Notification</h2>
-      <p>
-        The <strong>Event Notification</strong> pattern decouples the producer from
-        all consumers. This service publishes a <code>CryptoPriceUpdatedEvent</code>
-        for each ticker update received from Binance, then forgets about it.
-      </p>
-      <p>
-        Any number of downstream services can subscribe to <code>crypto.price.raw</code>
-        without requiring any change to this service — the producer is completely
-        unaware of who (or how many) consumers exist.
-      </p>
-
-      <div class="key-point blue">
-        <span class="icon">&#9654;</span>
-        <span>Symbol used as <strong>Kafka message key</strong> → partition affinity guarantees per-symbol ordering across all 3 partitions.</span>
-      </div>
-      <div class="key-point blue">
-        <span class="icon">&#9654;</span>
-        <span><strong>acks=all</strong> configured: the broker only acknowledges once all in-sync replicas have written the message.</span>
-      </div>
-      <div class="key-point green">
-        <span class="icon">&#10003;</span>
-        <span>Real-time delivery via <strong>Binance WebSocket streams</strong> with automatic reconnection on disconnect.</span>
-      </div>
-
-      <div id="info-chips" class="info-chips">
-        <span class="chip">topic: <strong>loading…</strong></span>
-      </div>
-    </section>
-
-  </div>
-
-  <!-- Event Schema -->
-  <section>
-    <h2>Event Schema · CryptoPriceUpdatedEvent</h2>
-    <div class="schema-grid">
-      <span class="sh">Field</span><span class="sh">Type</span><span class="sh">Purpose</span>
-
-      <span class="field">eventId</span>
-      <span class="type">String (UUID)</span>
-      <span class="desc">Unique event identifier — enables idempotent processing on the consumer side.</span>
-
-      <span class="field">symbol</span>
-      <span class="type">String</span>
-      <span class="desc">Trading pair, e.g. <code>BTCUSDT</code>. Also used as the Kafka message key.</span>
-
-      <span class="field">price</span>
-      <span class="type">BigDecimal</span>
-      <span class="desc">Current mid-price in USDT as reported by the Binance WebSocket stream.</span>
-
-      <span class="field">timestamp</span>
-      <span class="type">Instant (ISO-8601)</span>
-      <span class="desc">UTC timestamp when the event was created — not the Kafka publish time.</span>
-    </div>
-  </section>
-
-  <!-- Live Event Stream -->
   <section>
     <div class="live-header">
       <h2>Live Event Stream</h2>
@@ -261,6 +136,12 @@
         <span>Interval: 1 s</span>
       </div>
     </div>
+
+    <div id="info-chips" class="info-chips">
+      <span class="chip">topic: <strong>loading…</strong></span>
+    </div>
+    <br>
+
     <table>
       <thead>
         <tr>
@@ -291,17 +172,12 @@
            String(d.getMilliseconds()).padStart(3, '0');
   }
 
-  function shortId(id) {
-    return id ? id.substring(0, 8) + '…' : '–';
-  }
-
   async function refresh() {
     try {
       const res = await fetch('/api/dashboard');
       if (!res.ok) throw new Error(res.status);
       const data = await res.json();
 
-      // Update chips
       const chips = document.getElementById('info-chips');
       chips.innerHTML =
         `<span class="chip">topic: <strong>${data.topic}</strong></span>` +
@@ -309,16 +185,14 @@
           `<span class="chip">symbol: <strong>${s}</strong></span>`
         ).join('');
 
-      // Update status
       document.getElementById('dot').className = 'dot';
       document.getElementById('status-text').textContent = 'live';
       document.getElementById('last-updated').textContent = new Date().toLocaleTimeString('en-GB');
 
-      // Render events table
       const tbody = document.getElementById('events-body');
       const events = data.recentEvents || [];
       if (events.length === 0) {
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No events published yet — waiting for Binance stream…</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No events yet — waiting for Binance stream…</td></tr>';
         return;
       }
       tbody.innerHTML = events.map(e => `
@@ -329,7 +203,7 @@
           <td class="mono">${e.offset}</td>
           <td class="mono">${fmt(e.eventTimestamp)}</td>
           <td class="mono">${fmt(e.publishedAt)}</td>
-          <td class="mono" title="${e.eventId}">${shortId(e.eventId)}</td>
+          <td class="eid">${e.eventId || '–'}</td>
         </tr>
       `).join('');
     } catch (err) {

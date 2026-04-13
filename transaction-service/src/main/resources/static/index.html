@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <title>transaction-service · CryptoFlow</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      line-height: 1.6;
+    }
+
+    header {
+      background: #1a1f2e;
+      border-bottom: 2px solid #f59e0b;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.4rem; color: #fbbf24; font-weight: 700; }
+    header .badge {
+      font-size: 0.75rem;
+      background: #2d1e00;
+      color: #fde68a;
+      border: 1px solid #f59e0b;
+      border-radius: 999px;
+      padding: 0.15rem 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+
+    .notice {
+      max-width: 1200px;
+      margin: 1.25rem auto 0;
+      padding: 0 2rem;
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+    .notice strong { color: #fbbf24; }
+
+    main { max-width: 1200px; margin: 1rem auto; padding: 0 2rem 2rem; display: grid; gap: 1.5rem; }
+
+    section {
+      background: #1a1f2e;
+      border: 1px solid #2d3748;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #2d3748;
+    }
+    .section-header h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fbbf24;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .section-header .sub {
+      font-size: 0.78rem;
+      color: #64748b;
+    }
+
+    .live-meta { font-size: 0.8rem; color: #64748b; display: flex; align-items: center; gap: 1rem; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e;
+           display: inline-block; box-shadow: 0 0 6px #22c55e; }
+    .dot.red { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    thead th {
+      text-align: left;
+      color: #64748b;
+      font-weight: 600;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.4rem 0.75rem;
+      border-bottom: 1px solid #2d3748;
+    }
+    tbody tr { border-bottom: 1px solid #1e2736; transition: background 0.15s; }
+    tbody tr:hover { background: #1e2736; }
+    tbody td { padding: 0.45rem 0.75rem; color: #cbd5e1; }
+    tbody td.mono { font-family: monospace; font-size: 0.8rem; }
+    tbody td.sym  { font-weight: 700; color: #fbbf24; }
+    tbody td.uid  { font-family: monospace; font-size: 0.75rem; color: #94a3b8; word-break: break-all; min-width: 220px; }
+    tbody td.tid  { font-family: monospace; font-size: 0.75rem; color: #94a3b8; word-break: break-all; min-width: 220px; }
+
+    .status {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+    }
+    .status.PENDING  { background: #1e2a3a; color: #93c5fd; border: 1px solid #3b82f6; }
+    .status.APPROVED { background: #14291a; color: #86efac; border: 1px solid #22c55e; }
+    .status.REJECTED { background: #2d1515; color: #fca5a5; border: 1px solid #ef4444; }
+
+    .pub-yes { color: #86efac; font-family: monospace; font-size: 0.8rem; }
+    .pub-no  { color: #f59e0b; font-family: monospace; font-size: 0.8rem; }
+
+    .empty-row td { color: #4a5568; text-align: center; padding: 1.5rem; }
+
+    .user-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 0.75rem;
+    }
+    .user-card {
+      background: #0f1117;
+      border: 1px solid #2d3748;
+      border-radius: 0.5rem;
+      padding: 0.875rem 1rem;
+    }
+    .user-card .uname { font-weight: 700; color: #e2e8f0; font-size: 0.9rem; }
+    .user-card .uid-label { font-size: 0.72rem; color: #4a5568; font-family: monospace; margin-top: 0.2rem; word-break: break-all; }
+    .user-card .conf-time { font-size: 0.75rem; color: #22c55e; margin-top: 0.4rem; }
+    .empty-users { color: #4a5568; text-align: center; padding: 1.5rem; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>transaction-service</h1>
+  <span class="badge">Fairy Tale Saga</span>
+  <span class="badge">Transactional Outbox</span>
+  <span class="badge">Idempotent Consumer</span>
+  <span class="badge">Replicated Read-Model</span>
+  <span class="badge" style="margin-left:auto; font-size:0.7rem; background:#0f1117; border-color:#2d3748; color:#4a5568">
+    CryptoFlow · EDPO FS2026
+  </span>
+</header>
+
+<p class="notice">
+  Place orders via Camunda Operate → <strong>placeOrder.bpmn</strong>. Orders sit <strong>PENDING</strong> until a live Binance price matches the target, then move to <strong>APPROVED</strong> through the Zeebe workflow. The outbox row is written atomically with the status update and published to Kafka by the scheduler.
+</p>
+
+<main>
+
+  <!-- Orders -->
+  <section>
+    <div class="section-header">
+      <h2>Orders</h2>
+      <div class="live-meta">
+        <span><span id="dot-orders" class="dot red"></span>&nbsp;<span id="status-orders">connecting…</span></span>
+        <span>Updated: <span id="updated-orders">–</span></span>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Transaction ID</th>
+          <th>User ID</th>
+          <th>Symbol</th>
+          <th>Amount</th>
+          <th>Target Price</th>
+          <th>Matched Price</th>
+          <th>Status</th>
+          <th>Placed At</th>
+          <th>Resolved At</th>
+        </tr>
+      </thead>
+      <tbody id="orders-body">
+        <tr class="empty-row"><td colspan="9">Waiting for data…</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Outbox -->
+  <section>
+    <div class="section-header">
+      <h2>Outbox Events</h2>
+      <span class="sub">Written atomically with APPROVED status · published by scheduler</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Event ID</th>
+          <th>Transaction ID</th>
+          <th>Topic</th>
+          <th>Created At</th>
+          <th>Published At</th>
+          <th>State</th>
+        </tr>
+      </thead>
+      <tbody id="outbox-body">
+        <tr class="empty-row"><td colspan="6">No outbox events yet…</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Confirmed Users (Replicated Read-Model) -->
+  <section>
+    <div class="section-header">
+      <h2>Confirmed Users — Local Projection</h2>
+      <span class="sub">Upserted from UserConfirmedEvent · order validation reads this table locally</span>
+    </div>
+    <div id="user-grid" class="user-grid">
+      <div class="empty-users">No confirmed users yet…</div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+  const REFRESH_MS = 2000;
+
+  function fmtTime(iso) {
+    if (!iso) return '–';
+    const d = new Date(iso);
+    return d.toLocaleTimeString('en-GB', { hour12: false }) + '.' +
+           String(d.getMilliseconds()).padStart(3, '0');
+  }
+
+  function fmtPrice(p) {
+    if (!p) return '–';
+    const n = Number(p);
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch('/api/dashboard');
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+
+      // --- Orders ---
+      document.getElementById('dot-orders').className = 'dot';
+      document.getElementById('status-orders').textContent = 'live';
+      document.getElementById('updated-orders').textContent = new Date().toLocaleTimeString('en-GB');
+
+      const orders = data.transactions || [];
+      const ordersBody = document.getElementById('orders-body');
+      if (orders.length === 0) {
+        ordersBody.innerHTML = '<tr class="empty-row"><td colspan="9">No orders yet — place one via Camunda placeOrder form.</td></tr>';
+      } else {
+        ordersBody.innerHTML = orders.map(t => `
+          <tr>
+            <td class="tid">${t.transactionId}</td>
+            <td class="uid">${t.userId}</td>
+            <td class="sym">${t.symbol}</td>
+            <td class="mono">${fmtPrice(t.amount)}</td>
+            <td class="mono">${fmtPrice(t.targetPrice)}</td>
+            <td class="mono">${fmtPrice(t.matchedPrice)}</td>
+            <td><span class="status ${t.status}">${t.status}</span></td>
+            <td class="mono">${fmtTime(t.placedAt)}</td>
+            <td class="mono">${fmtTime(t.resolvedAt)}</td>
+          </tr>
+        `).join('');
+      }
+
+      // --- Outbox ---
+      const outbox = data.outbox || [];
+      const outboxBody = document.getElementById('outbox-body');
+      if (outbox.length === 0) {
+        outboxBody.innerHTML = '<tr class="empty-row"><td colspan="6">No outbox entries yet…</td></tr>';
+      } else {
+        outboxBody.innerHTML = outbox.map(o => `
+          <tr>
+            <td class="tid">${o.eventId}</td>
+            <td class="tid">${o.transactionId}</td>
+            <td class="mono">${o.topic}</td>
+            <td class="mono">${fmtTime(o.createdAt)}</td>
+            <td class="mono">${fmtTime(o.publishedAt)}</td>
+            <td>${o.published
+              ? '<span class="pub-yes">✓ published</span>'
+              : '<span class="pub-no">⏳ pending</span>'}</td>
+          </tr>
+        `).join('');
+      }
+
+      // --- Confirmed Users ---
+      const users = data.confirmedUsers || [];
+      const userGrid = document.getElementById('user-grid');
+      if (users.length === 0) {
+        userGrid.innerHTML = '<div class="empty-users">No confirmed users yet — complete onboarding first.</div>';
+      } else {
+        userGrid.innerHTML = users.map(u => `
+          <div class="user-card">
+            <div class="uname">${u.userName || '(no name)'}</div>
+            <div class="uid-label">${u.userId}</div>
+            <div class="conf-time">confirmed ${fmtTime(u.confirmedAt)}</div>
+          </div>
+        `).join('');
+      }
+
+    } catch (err) {
+      document.getElementById('dot-orders').className = 'dot red';
+      document.getElementById('status-orders').textContent = 'offline';
+    }
+  }
+
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+</script>
+
+</body>
+</html>

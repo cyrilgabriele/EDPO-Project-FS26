@@ -13,3 +13,10 @@ camunda:
       client-secret: ${CAMUNDA_CLIENT_SECRET_ONBOARDING_SERVICE}
     cluster-id: ${CAMUNDA_CLUSTER_ID_ONBOARDING_SERVICE}
     region: ${CAMUNDA_REGION_ONBOARDING_SERVICE}
+
+# Operate REST API credentials — must have the Operate scope enabled in Camunda Console.
+# Can be the same client as above if that client has both Zeebe + Operate scopes,
+# or a dedicated Operate-only client.
+operate:
+  client-id: ${CAMUNDA_OPERATE_CLIENT_ID}
+  client-secret: ${CAMUNDA_OPERATE_CLIENT_SECRET}
