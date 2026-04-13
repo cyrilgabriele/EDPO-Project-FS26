@@ -93,6 +93,7 @@
     tbody td.sym  { font-weight: 700; color: #60a5fa; }
     tbody td.price { color: #34d399; font-family: monospace; font-weight: 600; }
     tbody td.part  { color: #a78bfa; font-family: monospace; }
+    tbody td.eid   { font-family: monospace; font-size: 0.75rem; color: #94a3b8; word-break: break-all; min-width: 220px; }
 
     .empty-row td { color: #4a5568; text-align: center; padding: 2rem; }
 
@@ -171,10 +172,6 @@
            String(d.getMilliseconds()).padStart(3, '0');
   }
 
-  function shortId(id) {
-    return id ? id.substring(0, 8) + '…' : '–';
-  }
-
   async function refresh() {
     try {
       const res = await fetch('/api/dashboard');
@@ -206,7 +203,7 @@
           <td class="mono">${e.offset}</td>
           <td class="mono">${fmt(e.eventTimestamp)}</td>
           <td class="mono">${fmt(e.publishedAt)}</td>
-          <td class="mono" title="${e.eventId}">${shortId(e.eventId)}</td>
+          <td class="eid">${e.eventId || '–'}</td>
         </tr>
       `).join('');
     } catch (err) {

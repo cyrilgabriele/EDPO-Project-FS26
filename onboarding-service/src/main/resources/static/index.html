@@ -243,8 +243,8 @@
   |
   v
 <span class="wait">Event-Based Gateway</span>
-  |--- <span class="wait">UserConfirmed message</span>  -------------------------+
-  +--- <span class="comp">Timer: link expired</span>  --&gt; <span class="comp">End (expired)</span>          |
+  |--- <span class="wait">UserConfirmed message</span>  --------------------------+
+  +--- <span class="comp">Timer: link expired</span>  --&gt; <span class="comp">End (expired)</span>           |
                                                         |
                                                         v
                                              <span class="par">Parallel Gateway (fork)</span>
@@ -252,16 +252,16 @@
                                              v                    v
                                     <span class="par">userCreationWorker</span>   <span class="par">portfolioCreationWorker</span>
                                              |                    |
-                                             +--------+-----------+
-                                                      |
-                                             <span class="par">Parallel Join</span>
-                                             |-- both OK? --+
-                                             |              |
-                                             v            <span class="comp">one failed?</span>
-                                          <span class="hl">End OK</span>             |
-                                                         <span class="comp">Compensate both</span>
-                                                         <span class="comp">--&gt; delete user + portfolio</span>
-                                                         <span class="comp">--&gt; End NOK</span></pre>
+                                             +----------+---------+
+                                                        |
+                                                 <span class="par">Parallel Join</span>
+                                                 |-- both OK? --+
+                                                 |              |
+                                                 v            <span class="comp">one failed?</span>
+                                              <span class="hl">End OK</span>            |
+                                                           <span class="comp">Compensate both</span>
+                                                           <span class="comp">--&gt; delete user + portfolio</span>
+                                                           <span class="comp">--&gt; End NOK</span></pre>
     </details>
   </section>
 
