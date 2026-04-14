@@ -6,7 +6,7 @@ CryptoFlow is a crypto portfolio simulation platform that demonstrates event-dri
 
 The Project release for this version of the reportcan be found on GitHub: 
 
-https://github.com/cyrilgabriele/EDPO-Project-FS26
+https://github.com/cyrilgabriele/EDPO-Project-FS26/releases/tag/v1.0.0
 
 == Domain and Goals <domain-and-goals>
 

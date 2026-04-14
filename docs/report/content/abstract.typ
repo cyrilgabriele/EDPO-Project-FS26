@@ -4,4 +4,4 @@ CryptoFlow is an event-driven crypto portfolio simulation platform built with Ap
 
 The Project release for this version of the report can be found on GitHub:
 
-https://github.com/cyrilgabriele/EDPO-Project-FS26
+https://github.com/cyrilgabriele/EDPO-Project-FS26/releases/tag/v1.0.0
