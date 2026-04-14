@@ -15,7 +15,12 @@ In preparing this report, we utilized the following writing aids to enhance the 
       - Clarity and Coherence
     ],
     [All chapters],
-    "Anthropic - Claude Opus 4.6, Claude Sonnet 4.6 &  OpenAI - Codex 5.3/5.4",
+    "Anthropic - Claude Opus 4.6, Claude Sonnet 4.6",
+    [
+      - Code Generation
+    ],
+    [All modules],
+    "OpenAI - Codex 5.3, Codex 5.4",
     [
       - Code Generation
     ],
