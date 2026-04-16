@@ -86,6 +86,8 @@ The producer/consumer relationships are:
 
 Beyond the topic layout, the Kafka layer is configured at three levels: broker, producer, and consumer. @tab:kafka-broker-config, @tab:kafka-producer-config, and @tab:kafka-consumer-config summarize the settings and their rationale.
 
+#show figure:set block(breakable: true)
+
 #figure(
   caption: "Kafka broker configuration (Docker Compose)",
   table(
@@ -145,7 +147,9 @@ CryptoFlow distinguishes three interaction primitives in its BPMN models, each w
     [Worker], [Service task], [verb + subject (imperative); job type suffix `Worker`], [Zeebe invokes the worker over gRPC with retries. Deterministic failures halt the instance at that step and can be caught by boundary events],
   ),
 ) <tab:bpmn-primitives>
+#show figure:set block(breakable: false)
 
+#pagebreak()
 === User Onboarding Process
 
 The `userOnboarding.bpmn` process, deployed by the onboarding service, implements a Parallel Saga (ADR-0010) that coordinates user and portfolio creation across two bounded contexts.
