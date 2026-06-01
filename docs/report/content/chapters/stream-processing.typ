@@ -33,16 +33,12 @@ The `coin-metadata-service` applies the same shape to slower-moving crypto metad
 
 Cyril's ingestion path starts with `market-partial-book-ingestion-service`. It subscribes to Binance USD-M Futures Partial Book Depth streams (@adr-0021) and publishes raw depth updates as JSON to `crypto.scout.raw`. This topic is the replay boundary for Scout. Keeping the source record as raw JSON preserves observability and lets a fresh Scout application id rebuild derived scout topics from the retained raw feed (@adr-0022, @adr-0024).
 
-The `market-order-scout-service` then performs stateless stream processing over `crypto.scout.raw`:
+The `market-order-scout-service` then performs stateless stream processing over `crypto.scout.raw`, before a windowed aggregation feeds the dashboard. @fig:topo-market-scout shows the complete Market Scout topology.
 
-```text
-crypto.scout.raw (RawOrderBookDepthEvent, JSON)
-    -> filter events without asks
-    -> split ask levels into AskQuote records
-    -> translate AskQuote into MatchableAsk
-    -> filter AskQuote by configured ask threshold
-    -> translate threshold hits into AskOpportunity
-```
+#figure(
+  image("figures/market-scout-topology.svg", width: 96%),
+  caption: [Market Scout Kafka Streams topology: stateless filter, splitter, and translator stages derive the ask-quote, matchable-ask, and ask-opportunity streams, which a tumbling-window aggregate folds into window summaries and a queryable dashboard-stats store],
+) <fig:topo-market-scout>
 
 `AskQuote`, `AskOpportunity`, and `ScoutWindowSummary` are scout-owned Avro records (@adr-0022). `MatchableAsk` is different: @adr-0026 makes it the shared cross-service ask contract published to `crypto.scout.matchable-asks`. That keeps Transaction Service independent from Scout's dashboard-oriented event shapes.
 
@@ -50,27 +46,12 @@ crypto.scout.raw (RawOrderBookDepthEvent, JSON)
 
 Lecture 09 adds the core stateful idea: when processing depends on previous events, records with the same key must reach the same task, and state must be persisted in local stores backed by changelog topics. CryptoFlow uses state stores for matching, windowing, portfolio valuation, and dashboard reads.
 
-The most direct stateful topology is transaction matching. The previous trading flow matched pending orders against ticker prices kept in heap memory. @adr-0027 replaces that with a Kafka Streams topology in `transaction-service`:
+The most direct stateful topology is transaction matching. The previous trading flow matched pending orders against ticker prices kept in heap memory. @adr-0027 replaces that with a Kafka Streams topology in `transaction-service`, shown in @fig:topo-matching.
 
-```text
-transaction.buy-bids                crypto.scout.matchable-asks
-    key: symbol                         key: symbol
-    value: BuyBid                       value: MatchableAsk
-        │                                   │
-        └──────────── normalize symbol ─────┘
-                            │
-                            ▼
-                merge bid and ask candidates
-                            │
-                            ▼
-         ValueTransformerWithKey + persistent stores
-             pending-buy-bids-by-symbol
-             matched-transactions
-             allocated-asks
-                            │
-                            ▼
-              transaction.order-matched
-```
+#figure(
+  image("figures/transaction-matching-topology.svg", width: 92%),
+  caption: [Transaction matching topology: the bid and ask streams are re-keyed to a common symbol, merged, and matched by a custom `ValueTransformerWithKey` over three persistent stores, emitting `transaction.order-matched` keyed by `transactionId`],
+) <fig:topo-matching>
 
 The topology keeps pending bids by symbol, remembers matched transaction ids, and remembers allocated ask quote ids. This makes matching restartable and prevents duplicate match decisions. A `MatchableAsk` can be allocated to at most one still-pending bid, and a transaction that has already matched is ignored on replay.
 
@@ -88,21 +69,12 @@ When a match is found, the topology emits `transaction.order-matched` keyed by `
 
 For demonstration and debugging, `transaction-service` also consumes the bid, ask, and match streams into a matching-audit projection. The audit tables are not part of the matching decision itself; they are an event-driven read model for the dashboard. They let the demo inspect recent bids, observed ask quotes, emitted matches, event-time metadata, and Kafka topic/partition/offset information without coupling the matcher to the dashboard.
 
-The portfolio valuation topology uses state stores at a higher level of abstraction (@adr-0034). It consumes approved orders and prices, materializes both as tables, computes position values, then groups positions into a user-level aggregate:
+The portfolio valuation topology uses state stores at a higher level of abstraction (@adr-0034). It consumes approved orders and prices, materializes both as tables, computes position values, then groups positions into a user-level aggregate, as shown in @fig:topo-portfolio-valuation.
 
-```text
-transaction.order.approved
-    -> holdings KTable, key = userId|symbol
-
-crypto.price.raw
-    -> prices KTable, key = symbol
-
-holdings FK join prices
-    -> position-value KTable, key = userId|symbol
-    -> groupBy userId
-    -> portfolio-value-store
-    -> portfolio.value.updated
-```
+#figure(
+  image("figures/portfolio-valuation-topology.svg", width: 62%),
+  caption: [Portfolio valuation topology: approved orders and prices become KTables, a foreign-key table-table join yields per-position values, and a `groupBy(userId)` repartition aggregates them into the queryable `portfolio-value-store` and the compacted `portfolio.value.updated` topic],
+) <fig:topo-portfolio-valuation>
 
 The `portfolio-value-store` backs `GET /portfolios/{userId}/streams-value`. This demonstrates the Lecture 09 interactive-query pattern: the service reads the local Kafka Streams state store for the current materialized value instead of issuing a synchronous request to another service.
 
@@ -112,26 +84,16 @@ Lecture 10 distinguishes event time, ingestion time, and processing time. Crypto
 
 The Market Scout summary is a simple tumbling-window aggregation. After `AskOpportunity` records are produced, the topology groups by symbol, applies a configured window size, and aggregates the opportunity count and minimum ask price into `ScoutWindowSummary`. It also materializes a dashboard stats store so the Scout dashboard can read the latest summary state.
 
-The OHLC topology is the more complete windowing example. In the target architecture, @adr-0031 and the scope document name `crypto.price.clean` as the canonical input. The current implementation reads `crypto.price.raw` because the scope-02 price-sanity stream has not shipped yet. This is an implementation-stage deviation, not the final doctrine; the code documents the source swap as a one-line configuration change.
+The OHLC topology is the more complete windowing example. In the target architecture, @adr-0031 and the scope document name `crypto.price.clean` as the canonical input. The current implementation reads `crypto.price.raw` because the scope-02 price-sanity stream has not shipped yet. This is an implementation-stage deviation, not the final doctrine; the code documents the source swap as a one-line configuration change. @fig:topo-ohlc shows the topology.
 
-```text
-crypto.price.raw
-    -> extract event timestamp from CryptoPriceUpdatedEvent
-    -> groupByKey(symbol)
-    -> tumbling window 1m, grace configured
-    -> aggregate open/high/low/close/tickCount in ohlc-1m-store
-    -> suppress until window closes
-    -> join with reference.crypto.metadata GlobalKTable
-    -> crypto.ohlc.1m
-
-same source stream
-    -> analogous 5m and 1h pipelines
-    -> crypto.ohlc.5m / crypto.ohlc.1h
-```
+#figure(
+  image("figures/ohlc-topology.svg", width: 96%),
+  caption: [OHLC topology: event-time tumbling windows (1m / 5m / 1h) aggregate price ticks into closed candles, `suppress(untilWindowCloses)` emits one final bar per window, and a `GlobalKTable` left join enriches each closed bar with coin metadata before it reaches `crypto.ohlc.*`],
+) <fig:topo-ohlc>
 
 The grace period keeps a window open long enough to absorb bounded late ticks. `suppress(untilWindowCloses)` prevents downstream consumers from receiving every intermediate candle update. They receive one closed bar per `(symbol, window)` after the window and grace period are complete. This matches the semantics of a closed candlestick used by charts and future indicator computations (@adr-0031).
 
-Transaction matching also uses event-time validity, but as business logic inside a stateful transformer rather than as a DSL windowed join. A bid is eligible from `BuyBid.createdAt` until `createdAt + 30s`. The five-second margin is used for state retention and the BPMN timeout alignment, not for accepting asks after the 30-second business interval. A matching ask must have `ask.eventTime` inside the 30-second interval, a price at or below the bid price, and enough quantity (@adr-0027).
+Transaction matching also uses event-time validity, but as business logic inside a stateful transformer rather than as a DSL windowed join. An ask is eligible to match a bid only if its `ask.eventTime` falls inside the bid's 30-second window (`BuyBid.createdAt` to `createdAt + 30s`), the ask price is at or below the bid price, and the available quantity is sufficient. The five-second grace does not widen this eligibility window: it only extends how long a pending bid is retained in state, to `validity + grace`. That retention margin exists so that an ask which arrives late in processing time but still carries an in-window event time can still find its bid instead of being pruned first; it is aligned with the Camunda rejection timer (`PT35S`) so the workflow and the matcher agree on when a bid is finally abandoned (@adr-0027).
 
 == Joins, Repartitioning, and Interactive Queries
 

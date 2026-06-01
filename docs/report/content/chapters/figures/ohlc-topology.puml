@@ -1,0 +1,28 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+
+queue "crypto.price.raw\nCryptoPriceUpdatedEvent · JSON\nevent-time via PriceTickTimestampExtractor" as price
+
+rectangle "**groupByKey(symbol)**\n**Windowed Aggregate**\ntumbling 1m / 5m / 1h + grace\nopen / high / low / close / tickCount" as agg
+
+together {
+  database "ohlc-1m-store" as s1
+  database "ohlc-5m-store" as s5
+  database "ohlc-1h-store" as sh
+}
+
+rectangle "**suppress** (untilWindowCloses)\none final closed bar\nper (symbol, window)" as suppress
+database "reference.crypto.metadata\nCoinMetadata · GlobalKTable" as meta
+rectangle "**left join**\nenrich bar with name, logo,\nbase/quote asset, market-cap rank" as join
+queue "crypto.ohlc.1m / 5m / 1h\nOhlc · Avro" as ohlc
+
+price --> agg
+agg -- s1
+agg -- s5
+agg -- sh
+agg --> suppress
+suppress --> join
+meta --> join
+join --> ohlc
+@enduml

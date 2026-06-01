@@ -1,0 +1,34 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+
+queue "crypto.scout.raw\nRawOrderBookDepthEvent · JSON\nkey = symbol · custom event-time extractor" as raw
+
+rectangle "**Filter**\ndrop snapshots without asks" as filter
+rectangle "**Splitter** (flatMapValues)\none AskQuote per ask level\n+ best-ask & notional features" as split
+
+queue "crypto.scout.ask-quotes\nAskQuote · registryless Avro" as askq
+rectangle "**Translator** (mapValues)\nAskQuote → MatchableAsk" as toMatch
+queue "crypto.scout.matchable-asks\nMatchableAsk · Avro · cross-service" as matchable
+
+rectangle "**Filter + Translator**\nprice ≤ askThreshold\n→ AskOpportunity" as opp
+queue "crypto.scout.ask-opportunities\nAskOpportunity · Avro" as oppTopic
+
+rectangle "**Windowed Aggregate**\ngroupByKey(symbol)\ntumbling window · no grace\ncount + min ask price" as winagg
+queue "crypto.scout.window-summary\nScoutWindowSummary · Avro" as summaryTopic
+
+rectangle "**Aggregate**\nlatest summary per symbol" as statsagg
+database "market-scout-dashboard-stats\nstate store · interactive query" as stats
+
+raw --> filter
+filter --> split
+split --> askq
+split --> toMatch
+toMatch --> matchable
+split --> opp
+opp --> oppTopic
+opp --> winagg
+winagg --> summaryTopic
+winagg --> statsagg
+statsagg --> stats
+@enduml

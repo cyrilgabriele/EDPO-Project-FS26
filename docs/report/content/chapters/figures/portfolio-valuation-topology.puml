@@ -1,0 +1,30 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+
+queue "transaction.order.approved\nOrderApprovedEvent · JSON" as approved
+queue "crypto.price.raw\nCryptoPriceUpdatedEvent · JSON" as price
+
+rectangle "**fold** signed-sum quantity\nkey = userId|symbol" as holdfold
+database "holdings KTable\nkey = userId|symbol" as holdings
+rectangle "**latest price** per symbol" as pricefold
+database "prices KTable\nkey = symbol" as prices
+
+rectangle "**FK Table-Table Join**\nholdings × prices on symbol\nvalue = quantity × price" as fkjoin
+database "position-value KTable\nkey = userId|symbol" as posval
+
+rectangle "**groupBy(userId)** → repartition\n**aggregate** add / subtract" as regroup
+database "portfolio-value-store\nkey = userId · interactive query" as pvstore
+queue "portfolio.value.updated\nPortfolioValue · Avro · compacted" as pvtopic
+
+approved --> holdfold
+holdfold --> holdings
+price --> pricefold
+pricefold --> prices
+holdings --> fkjoin
+prices --> fkjoin
+fkjoin --> posval
+posval --> regroup
+regroup --> pvstore
+regroup --> pvtopic
+@enduml

@@ -1,0 +1,31 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+
+queue "transaction.buy-bids\nBuyBid · Avro · key = symbol\ncustom event-time extractor" as bids
+queue "crypto.scout.matchable-asks\nMatchableAsk · Avro · key = symbol\ncustom event-time extractor" as asks
+
+rectangle "**rekey + tag**\nnormalize symbol\nas bid candidate" as bmap
+rectangle "**rekey + tag**\nnormalize symbol\nas ask candidate" as amap
+rectangle "**merge**\nsingle keyed stream" as merge
+
+rectangle "**MatchingTransformer**\nValueTransformerWithKey (Processor API)\nevent-time validity + price-time priority\nask allocated to at most one pending bid" as transformer
+
+together {
+  database "pending-buy-bids-by-symbol" as s1
+  database "matched-transactions" as s2
+  database "allocated-asks" as s3
+}
+
+queue "transaction.order-matched\nOrderMatched · Avro · key = transactionId" as matched
+
+bids --> bmap
+asks --> amap
+bmap --> merge
+amap --> merge
+merge --> transformer
+transformer -- s1
+transformer -- s2
+transformer -- s3
+transformer --> matched
+@enduml

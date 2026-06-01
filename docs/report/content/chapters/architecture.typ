@@ -49,7 +49,7 @@ The process waits at an event-based gateway for either an order-matched event (c
 
 The portfolio update happens outside the orchestrated flow: `portfolio-service` independently consumes the `OrderApprovedEvent` from Kafka and updates holdings via `upsertHolding()`, protected by an idempotent consumer guard (ADR-0016). This separation is deliberate — the order approval is the terminal business event in the trading context, and the portfolio propagation is an eventual downstream consequence (ADR-0013, ADR-0015).
 
-If the `approveOrderWorker` or `publishOrderApprovedWorker` encounters a deterministic failure (e.g., a missing transaction record or outbox row), it throws a typed BPMN error that routes the instance to an operations user task for human investigation (ADR-0018).
+If the `approveOrderWorker` or `publishOrderApprovedWorker` encounters a deterministic failure (e.g., a missing transaction record or outbox row), it throws a typed BPMN error that routes the instance to an operations user task for human investigation (ADR-0018). After the operator resolves the task, the flow re-enters the happy path rather than terminating: an approval failure loops back to the approve step, while a publication failure skips forward to the notification step because the approved-order event has already been published and propagated to the portfolio context downstream (ADR-0035).
 
 == Event-Driven Architectural Parts
 
@@ -210,7 +210,7 @@ The `placeOrder.bpmn` process (see @fig:placeorder-fairy-tale-saga), deployed by
 
 #figure(
   image("figures/placeOrder-bpmn.png", width: 100%),
-  caption: [Place order BPMN process with Kafka-backed matching, timeout handling, and downstream publication],
+  caption: [Place order BPMN process with Kafka-backed matching, timeout handling, downstream publication, and operations tasks that loop the resolved instance back into the happy path (ADR-0035)],
 ) <fig:placeorder-fairy-tale-saga>
 
 #figure(
@@ -235,7 +235,7 @@ At the architecture level, the important point is separation of concerns: Kafka 
 
 *Transactional outbox for reliable publication.* The approval path uses two sequential workers. `approveOrderWorker` writes both the `APPROVED` status and an outbox row in a single local database transaction. `publishOrderApprovedWorker` then reads and publishes the outbox entry to Kafka. A scheduled safety net republishes any rows that remain unpublished after a crash (ADR-0014). This guarantees that an approved order does not silently miss the event that must later update the portfolio.
 
-*Human escalation for deterministic failures.* If the approval or publication step encounters a deterministic, non-retryable failure (e.g., a missing transaction record or outbox row), the worker throws a typed BPMN error. An interrupting boundary event routes the instance to an operations user task in Camunda Tasklist, where the operator sees the full order context and must document the resolution before closing the task (ADR-0018). This keeps the instance open and auditable instead of retrying indefinitely or failing silently.
+*Human escalation for deterministic failures.* If the approval or publication step encounters a deterministic failure that automatic retries cannot resolve (e.g., a missing transaction record or outbox row), the worker throws a typed BPMN error. An interrupting boundary event routes the instance to an operations user task in Camunda Tasklist, where the operator sees the full order context and must document the resolution before closing the task (ADR-0018). After resolution the process re-enters the happy path rather than terminating (ADR-0035): an approval error loops back to the approve step so the atomic approve-with-outbox write can retry, while a publication error skips forward to the executed-email step because the approved-order event has already been published and the portfolio update is choreographed downstream, leaving nothing for the process to revert. A premature close simply re-raises the same task, so the escalation stays auditable and self-healing instead of retrying indefinitely or failing silently.
 
 *Eventual portfolio propagation.* The portfolio update is deliberately not part of the orchestrated flow. After the outbox event is published to Kafka, `portfolio-service` consumes `OrderApprovedEvent` independently and updates holdings in its own ACID boundary, protected by an idempotent consumer guard (ADR-0016). The executed email confirms the order approval — the business event — not the portfolio propagation, which is a downstream consequence accepted as eventually consistent (ADR-0015).
 

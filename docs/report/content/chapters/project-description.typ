@@ -16,15 +16,18 @@ The central goal of this project was to implement the concepts covered in the ED
 
 @fig:context-map shows the domain as a DDD context map. The final platform is best understood as six bounded contexts: Market Data, Reference Data, Portfolio, Trading, User, and Onboarding.
 
-#text(red)[TODO Ioannis: Replace Figure 1 with the most recent context/topology image before hand-in.]
-
 #figure(
-  image("figures/context-map.jpeg", width: 62%),
+  image("figures/cmap.svg", width: 84%),
   caption: [Context map of CryptoFlow showing bounded contexts, upstream/downstream relationships, and external systems],
 ) <fig:context-map>
 
-/ Market Data: Upstream supplier for live prices. Ingests external Binance feeds through an Anti-Corruption Layer and publishes price events that flow downstream to Portfolio and Trading.
-/ Reference Data: Slow-moving externally sourced facts for event enrichment. Publishes FX rates and coin metadata as compacted reference topics so downstream services can enrich local stream state without synchronous provider calls.
+/ Market Data: Upstream supplier for live prices and market analytics, grouping three related ingest services:
+  - *Live ticker feeds* — Ingests real-time Binance WebSocket price data and publishes price events downstream to Portfolio and Trading.
+  - *Partial order-book* — Aggregates live bid/ask depth from Binance futures and derives Scout summary statistics via stateful Kafka Streams.
+  - *OHLC aggregation* — Produces windowed candlestick bars enriched with coin metadata from the Reference Data context.
+/ Reference Data: Slow-moving externally sourced facts for event enrichment, grouping two reference-data providers:
+  - *FX rates* — Scheduled ingestion from Frankfurter, published as compacted topics for display-currency conversion downstream.
+  - *Coin metadata* — Periodic ingestion from CoinGecko, available as a `GlobalKTable` for enriching closed OHLC bars.
 / Portfolio: Downstream consumer of both price events and approved-order events. Owns holdings, valuation logic, and an in-memory price cache. Participates in the onboarding saga as a Camunda job worker.
 / Trading: Downstream consumer of price events and user-confirmation events. Owns order lifecycle, the transactional outbox, and a replicated read-model for user validation. Deploys the `placeOrder` BPMN process.
 / User: Upstream supplier of confirmed-user events consumed by Trading. Owns user accounts, confirmation links, and identity state. Participates in the onboarding saga as a Camunda job worker.
@@ -36,7 +39,7 @@ User and Portfolio are connected through a Partnership relationship: bidirection
 
 The bounded contexts and flows described above impose a set of quality attributes that any architectural solution must satisfy. The worksheet below identifies seven driving characteristics derived from the domain requirements, marks the top three, and lists additional characteristics that were considered but not deemed critical.
 
-#show figure: set block(breakable: true)
+#show figure: set block(breakable: false)
 #figure(
   caption: "Architecture characteristics worksheet",
   table(
